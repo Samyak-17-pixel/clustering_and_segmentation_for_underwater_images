@@ -1,0 +1,5 @@
+# Large files (exceed GitHub limits)
+USOD/eval_data.zip
+USOD/checkpoints/*.h5
+__pycache__/
+*.pyc
