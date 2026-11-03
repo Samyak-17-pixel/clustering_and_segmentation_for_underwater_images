@@ -1,7 +1,7 @@
-"""Figure tiles for the Review 2 deck (ppts/Review-2-...pptx). Writes rounded PNG tiles + meta.json to ppts/figures/.
+"""Figure tiles for the Review 2 deck (presentations/Review-2-...pptx). Writes rounded PNG tiles + meta.json to presentations/figures/.
 
 Every tile is a separate picture so that captions stay editable text in the deck. Numbers are taken from the
-same code paths as the experiments (k-means: dinov2_cluster_union_stride.py, dendrograms: dendrogram_code/).
+same code paths as the experiments (k-means: src/dinov2_cluster_union_stride.py, dendrograms: src/dendrogram/).
 """
 import json
 import sys
@@ -17,7 +17,7 @@ from PIL import Image, ImageDraw
 from scipy.cluster.hierarchy import dendrogram, linkage
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(REPO), str(REPO / "dendrogram_code")]
+sys.path[:0] = [str(REPO / "src"), str(REPO / "src" / "dendrogram")]
 
 from dendro_cluster import build_tree, gap_k                                          # noqa: E402
 from dinov2_dendro import FeatureContext, evaluate_tree                               # noqa: E402
@@ -26,7 +26,7 @@ from dinov2_cluster_union_stride import (border_rule_union, dense_features,     
 from dinov2_seg import PATCH, load_model, pca_masks                                    # noqa: E402
 from gt_utils import load_gt                                                          # noqa: E402
 
-OUT = REPO / "ppts" / "figures"
+OUT = REPO / "presentations" / "figures"
 OUT.mkdir(parents=True, exist_ok=True)
 SIZE = (588, 448)
 TILE = (640, 480)
@@ -83,7 +83,7 @@ def kmeans_run(X, grid, gt, stride, kmax):
 
 
 def cached_mask(stem, stride, key, gt_shape):
-    z = np.load(REPO / "dendrogram_results" / "_cache" / "usod" / f"{stem}_s{stride}.npz")
+    z = np.load(REPO / "results" / "dendrogram" / "_cache" / "usod" / f"{stem}_s{stride}.npz")
     gh, gw = z["grid"]
     m = np.unpackbits(z[key])[: gh * gw].reshape(gh, gw).astype(bool)
     return prob_mask(m, gt_shape, stride)
@@ -92,7 +92,7 @@ def cached_mask(stem, stride, key, gt_shape):
 def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = load_model("dinov2_vitb14", device)
-    data = REPO / "USOD"
+    data = REPO / "data" / "USOD"
 
     def load(stem):
         return Image.open(data / "images" / f"{stem}.jpg").convert("RGB"), load_gt(data, stem, "usod")

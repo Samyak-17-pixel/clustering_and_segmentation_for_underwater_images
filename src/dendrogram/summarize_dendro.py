@@ -1,6 +1,6 @@
 """Side-by-side tables, statistics vs the k-means baseline, and best-variant panels for the dendrogram runs.
 
-    python dendrogram_code/summarize_dendro.py --gt usod --strides 14 3
+    python src/dendrogram/summarize_dendro.py --gt usod --strides 14 3
 """
 import argparse
 import csv
@@ -16,15 +16,15 @@ from PIL import Image
 from scipy.stats import wilcoxon
 from tqdm import tqdm
 
-REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO))
+REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "src"))
 
 from gt_utils import load_gt
 
 RULES = ("sil_border", "gap_border", "subtree", "score")
-BASELINE_DIR = {"usod": "dinov2_results_usod", "suim_saliency": "dinov2_results_suim_saliency",
-                "suim_nonwater": "dinov2_results_suim"}
-DEFAULT_DATA = {"usod": REPO / "USOD", "suim_saliency": REPO / "SUIM" / "TEST", "suim_nonwater": REPO / "SUIM" / "TEST"}
+BASELINE_DIR = {"usod": "usod", "suim_saliency": "suim_saliency",
+                "suim_nonwater": "suim"}
+DEFAULT_DATA = {"usod": REPO / "data" / "USOD", "suim_saliency": REPO / "data" / "SUIM" / "TEST", "suim_nonwater": REPO / "data" / "SUIM" / "TEST"}
 
 
 def read_rows(path):
@@ -32,7 +32,7 @@ def read_rows(path):
 
 
 def baseline(gt, stride):
-    d = REPO / BASELINE_DIR[gt] / f"cluster_union_stride{stride}_k6"
+    d = REPO / "results" / BASELINE_DIR[gt] / f"cluster_union_stride{stride}_k6"
     out = defaultdict(dict)
     for r in read_rows(d / "metrics_union.csv"):
         out[r["feat"]][r["image"]] = (float(r["border_iou"]), float(r["oracle_iou"]))
@@ -145,7 +145,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--gt", required=True, choices=list(BASELINE_DIR))
     ap.add_argument("--strides", nargs="+", type=int, default=[14])
-    ap.add_argument("--out-root", default=REPO / "dendrogram_results")
+    ap.add_argument("--out-root", default=REPO / "results" / "dendrogram")
     ap.add_argument("--data", default=None)
     ap.add_argument("--tag", default=None)
     ap.add_argument("--no-panels", action="store_true")

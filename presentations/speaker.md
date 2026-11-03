@@ -2,7 +2,7 @@
 
 > **Which part is current:** the notes up to the line "Review 2 deck: speaker notes" belong to the old Review 1 deck (9 slides). For Review 2 (16 slides) jump to "# Review 2 deck: speaker notes (slides 3-16)".
 
-Deck: *Unsupervised Underwater Object Segmentation Using Pretrained Vision Transformer Features* (9 slides, `ppts/…pptx.pdf`).
+Deck: *Unsupervised Underwater Object Segmentation Using Pretrained Vision Transformer Features* (9 slides, `presentations/…pptx.pdf`).
 Suggested pace: about 8–10 minutes, roughly 1 minute per content slide, then questions.
 
 Each slide has: **What it says**, **Explanation** (so you understand it), **Speaker notes** (say this), and **Likely questions**.
@@ -186,7 +186,7 @@ The summary box repeats the key point: ground truth is used only for evaluation,
 
 ## Backup: optional facts if asked about early results
 
-Say these only if asked, because Review 1 is about the plan. All numbers are means over the 300 USOD images and come from the CSV files in `dinov2_results_usod/`.
+Say these only if asked, because Review 1 is about the plan. All numbers are means over the 300 USOD images and come from the CSV files in `results/usod/`.
 
 - Simple baselines (2 clusters, border rule): PCA mask IoU 0.418, K-means IoU 0.490.
 - With the oracle choosing the best cluster combination using ground truth (an upper bound): IoU about 0.66–0.70.
@@ -201,7 +201,7 @@ Say these only if asked, because Review 1 is about the plan. All numbers are mea
 
 # Part 2: Concept explainers (for answering questions)
 
-These sections explain the ideas behind slides 2, 5, 6 and 7 in more depth. All numbers and settings are the ones used in the code (`dinov2_seg.py`, `dinov2_cluster_union.py`).
+These sections explain the ideas behind slides 2, 5, 6 and 7 in more depth. All numbers and settings are the ones used in the code (`src/dinov2_seg.py`, `src/dinov2_cluster_union.py`).
 
 ## A. What DINOv2 does
 

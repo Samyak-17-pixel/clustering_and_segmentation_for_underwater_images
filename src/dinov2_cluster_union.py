@@ -75,8 +75,8 @@ def process_feature(X, grid, gt):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", default=ROOT / "USOD")
-    ap.add_argument("--out", default=ROOT / "dinov2_results" / "cluster_union")
+    ap.add_argument("--data", default=ROOT / "data" / "USOD")
+    ap.add_argument("--out", default=ROOT / "results" / "usod" / "cluster_union_stride14_k4")
     ap.add_argument("--model", default="dinov2_vitb14")
     ap.add_argument("--height", type=int, default=448)
     ap.add_argument("--width", type=int, default=588)
