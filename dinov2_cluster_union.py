@@ -19,6 +19,8 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from tqdm import tqdm
 
+from gt_utils import GT_MODES, drop_degenerate, load_gt
+
 from dinov2_seg import ROOT, load_model, metrics, patch_features, pca_masks, upsample
 
 KS = (2, 3, 4)
@@ -79,6 +81,9 @@ def main():
     ap.add_argument("--height", type=int, default=448)
     ap.add_argument("--width", type=int, default=588)
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--gt", choices=GT_MODES, default="usod")
+    ap.add_argument("--min-water-frac", type=float, default=0.0,
+                    help="suim_nonwater only: skip images with less water than this (all-foreground GT)")
     args = ap.parse_args()
 
     data, out = Path(args.data), Path(args.out)
@@ -88,13 +93,14 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = load_model(args.model, device)
     paths = sorted((data / "images").glob("*.jpg"))
+    paths = drop_degenerate(paths, data, args.gt, args.min_water_frac, out)
     if args.limit:
         paths = paths[: args.limit]
 
     rows = []
     for p in tqdm(paths):
         img = Image.open(p).convert("RGB")
-        gt = np.asarray(Image.open(data / "masks" / f"{p.stem}.png").convert("L")) > 128
+        gt = load_gt(data, p.stem, args.gt)
         feats = patch_features(model, img, (args.width, args.height), device)
         grid = feats.shape[:2]
         _, rgb = pca_masks(feats)
