@@ -1,10 +1,10 @@
-"""Builds ppts/Review-2-Training-Free-Underwater-Object-Segmentation.pptx from the corrected Review 1 deck.
+"""Builds presentations/Review-2-Training-Free-Underwater-Object-Segmentation.pptx from the corrected Review 1 deck.
 
 Slides 1-2 and the THANK YOU slide are the base deck's own slides (slide 1 gets the Review 2 label and 4 student lines);
 slides 3-15 are new and use the base deck's fonts, colours and spacing (geometry below is written for a 12.19M-EMU-wide
 slide and scaled by S = 1.5 to the base deck's 18.29M-EMU canvas). Run with the system python3 (python-pptx), after build_figures.py:
 
-    python3 ppts/build_deck.py
+    python3 presentations/build_deck.py
 """
 import copy
 import csv
@@ -26,7 +26,7 @@ from lxml import etree
 from pptx.util import Emu, Pt
 
 REPO = Path(__file__).resolve().parents[1]
-PPTS = REPO / "ppts"
+PPTS = REPO / "presentations"
 FIG = PPTS / "figures"
 TEMPLATE = PPTS / "Training-Free-Underwater-Object-Segmentation-Using-Pretrained-Vision-Transformers_review_2.pptx.pptx"
 OUT = PPTS / "Review-2-Training-Free-Underwater-Object-Segmentation.pptx"
@@ -57,7 +57,7 @@ def csv_rows(path):
 
 
 def km_mean(folder, feat, key):
-    rows = [r for r in csv_rows(REPO / "dinov2_results_usod" / folder / "metrics_union.csv") if r["feat"] == feat]
+    rows = [r for r in csv_rows(REPO / "results" / "usod" / folder / "metrics_union.csv") if r["feat"] == feat]
     return float(np.mean([float(r[key]) for r in rows]))
 
 
@@ -67,25 +67,25 @@ for folder, tag in (("cluster_union_stride14_k4", "k4"), ("cluster_union_stride1
         N[tag, feat, "oracle"] = km_mean(folder, feat, "oracle_iou")
         N[tag, feat, "border"] = km_mean(folder, feat, "border_iou")
 ORACLE_BY_K = {feat: [km_mean("cluster_union_stride14_k6", feat, f"oracle_iou_k{k}") for k in range(2, 7)] for feat in ("768", "rgb")}
-SUMMARY = {(r["feat"], r["spatial"], r["linkage"]): r for r in csv_rows(REPO / "dendrogram_results/usod/summary_s3.csv")}
-STATS = {(r["feat"], r["spatial"], r["linkage"], r["rule"]): r for r in csv_rows(REPO / "dendrogram_results/usod/stats_s3.csv")}
+SUMMARY = {(r["feat"], r["spatial"], r["linkage"]): r for r in csv_rows(REPO / "results" / "dendrogram" / "usod/summary_s3.csv")}
+STATS = {(r["feat"], r["spatial"], r["linkage"], r["rule"]): r for r in csv_rows(REPO / "results" / "dendrogram" / "usod/stats_s3.csv")}
 BEST = STATS["768", "free", "average", "gap_border"]
-_base = {r["image"]: float(r["border_iou"]) for r in csv_rows(REPO / "dinov2_results_usod/cluster_union_stride3_k6/metrics_union.csv") if r["feat"] == "768"}
-_new = {r["image"]: float(r["iou"]) for r in csv_rows(REPO / "dendrogram_results/usod/metrics_s3.csv")
+_base = {r["image"]: float(r["border_iou"]) for r in csv_rows(REPO / "results/usod/cluster_union_stride3_k6/metrics_union.csv") if r["feat"] == "768"}
+_new = {r["image"]: float(r["iou"]) for r in csv_rows(REPO / "results" / "dendrogram" / "usod/metrics_s3.csv")
         if (r["feat"], r["spatial"], r["linkage"], r["rule"]) == ("768", "free", "average", "gap_border")}
 _d = np.array([_new[i] - _base[i] for i in _new])
 WIN = dict(better=float((_d > 0.02).mean()), worse=float((_d < -0.02).mean()))
 SUIM_BEST = {(r["feat"], r["spatial"], r["linkage"], r["rule"]): r
-             for r in csv_rows(REPO / "dendrogram_results/suim_saliency/stats_s3.csv")}["768", "free", "average", "gap_border"]
+             for r in csv_rows(REPO / "results" / "dendrogram" / "suim_saliency/stats_s3.csv")}["768", "free", "average", "gap_border"]
 
 
-_k4 = {r["image"]: float(r["border_iou"]) for r in csv_rows(REPO / "dinov2_results_usod/cluster_union_stride14_k4/metrics_union.csv") if r["feat"] == "768"}
-_k6 = {r["image"]: float(r["border_iou"]) for r in csv_rows(REPO / "dinov2_results_usod/cluster_union_stride14_k6/metrics_union.csv") if r["feat"] == "768"}
+_k4 = {r["image"]: float(r["border_iou"]) for r in csv_rows(REPO / "results/usod/cluster_union_stride14_k4/metrics_union.csv") if r["feat"] == "768"}
+_k6 = {r["image"]: float(r["border_iou"]) for r in csv_rows(REPO / "results/usod/cluster_union_stride14_k6/metrics_union.csv") if r["feat"] == "768"}
 SHARE_GOOD_K4 = float(np.mean([v >= 0.70 for v in _k4.values()]))
 N_BETTER_K6 = sum(_k6[i] - _k4[i] > 0.10 for i in _k4)
 N_WORSE_K6 = sum(_k4[i] - _k6[i] > 0.10 for i in _k4)
-_o4 = {r["image"]: float(r["oracle_iou"]) for r in csv_rows(REPO / "dinov2_results_usod/cluster_union_stride14_k4/metrics_union.csv") if r["feat"] == "768"}
-_o6 = {r["image"]: float(r["oracle_iou"]) for r in csv_rows(REPO / "dinov2_results_usod/cluster_union_stride14_k6/metrics_union.csv") if r["feat"] == "768"}
+_o4 = {r["image"]: float(r["oracle_iou"]) for r in csv_rows(REPO / "results/usod/cluster_union_stride14_k4/metrics_union.csv") if r["feat"] == "768"}
+_o6 = {r["image"]: float(r["oracle_iou"]) for r in csv_rows(REPO / "results/usod/cluster_union_stride14_k6/metrics_union.csv") if r["feat"] == "768"}
 N_ORACLE_BETTER_K6 = sum(_o6[i] - _o4[i] > 0.10 for i in _o4)
 
 

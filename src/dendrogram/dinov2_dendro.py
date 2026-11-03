@@ -20,8 +20,8 @@ from PIL import Image
 from scipy.cluster.hierarchy import dendrogram
 from tqdm import tqdm
 
-REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO))
+REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from dendro_cluster import (KS, LINKAGES, RULES, build_tree, cut_labels, gap_k, make_sampling_grid, metrics_batch,
@@ -152,10 +152,10 @@ def dendrogram_figure(path, trees, feat, linkages, spatials):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", default=REPO / "USOD")
+    ap.add_argument("--data", default=REPO / "data" / "USOD")
     ap.add_argument("--gts", nargs="+", choices=GT_MODES, default=["usod"])
     ap.add_argument("--tag", default=None, help="cache name shared by the GTs of one image set (default: first GT)")
-    ap.add_argument("--out-root", default=REPO / "dendrogram_results")
+    ap.add_argument("--out-root", default=REPO / "results" / "dendrogram")
     ap.add_argument("--model", default="dinov2_vitb14")
     ap.add_argument("--height", type=int, default=448)
     ap.add_argument("--width", type=int, default=588)

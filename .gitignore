@@ -1,17 +1,16 @@
-# Large files (exceed GitHub limits)
-USOD/eval_data.zip
-USOD/checkpoints/*.h5
+# Large dataset files (exceed GitHub limits / not redistributable)
+data/USOD/eval_data.zip
+data/USOD/checkpoints/*.h5
+data/SUIM/
+
+# Python and logs
 __pycache__/
 *.pyc
-
-# Datasets (too large; download separately)
-SUIM/
-
-# Logs and caches
 *.log
-dendrogram_results/_cache/
 
-# Bulk image outputs of the SUIM and dendrogram runs (CSV/summary files are kept, figures used in the docs live in docs/figures/)
-dinov2_results_suim*/**/masks_*
-dinov2_results_suim*/**/panels
-dendrogram_results/**/*.png
+# Caches and bulk image outputs of the SUIM and dendrogram runs
+# (CSV/summary files are kept; figures used in the docs live in docs/figures/)
+results/dendrogram/_cache/
+results/dendrogram/**/*.png
+results/suim*/**/masks_*
+results/suim*/**/panels

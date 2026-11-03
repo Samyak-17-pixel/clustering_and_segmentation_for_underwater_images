@@ -1,8 +1,8 @@
 # Dendrograms in simple words
 
-Everything we built with dendrograms (hierarchical clustering) for training-free underwater object segmentation, explained without jargon. Code is in `dendrogram_code/`, results in `dendrogram_results/`.
+Everything we built with dendrograms (hierarchical clustering) for training-free underwater object segmentation, explained without jargon. Code is in `src/dendrogram/`, results in `results/dendrogram/`.
 
-Full technical write-up with tables, statistics and caveats: [README Sec. 19](README.md#19-dendrogram-hierarchical-clustering-instead-of-k-means).
+Full technical write-up with tables, statistics and caveats: [README Sec. 19](../README.md#19-dendrogram-hierarchical-clustering-instead-of-k-means).
 
 ---
 
@@ -119,7 +119,7 @@ Use **Average linkage** (cosine distance, 768-D features). Ward is a safe second
 - Distance: Ward needs ordinary (Euclidean) distance; the others use cosine distance on 768-D features (Euclidean on PCA-RGB).
 - **Speed trick:** a tree on 27,840 patches is too big, so for free trees at stride 3 we build the tree on **3,000 randomly sampled patches** and give every other patch the group of its nearest sampled patch.
 
-Code: `dendro_cluster.py` (`build_tree`, `cut_labels`), `dinov2_dendro.py` (the full run).
+Code: `src/dendrogram/dendro_cluster.py` (`build_tree`, `cut_labels`), `src/dendrogram/dinov2_dendro.py` (the full run).
 
 ---
 
@@ -189,11 +189,11 @@ Why it helps: the tree does not force k in advance, and Average linkage with the
 
 | Path | Purpose |
 |---|---|
-| `dendrogram_code/dendro_cluster.py` | tree building, cutting, the four rules, silhouette, GPU helpers |
-| `dendrogram_code/dinov2_dendro.py` | runs all variants over a dataset, caches masks, writes metrics and figures |
-| `dendrogram_code/summarize_dendro.py` | tables, paired statistics vs k-means, best-variant panels |
-| `dendrogram_results/{usod,suim_saliency,suim_nonwater}/` | `metrics_s*.csv`, `summary_s*.md`, `stats_s*.csv`, `dendrograms/`, `compare/`, `panels_best/` |
-| `dendrogram_results/_cache/` | cached cut masks per image |
+| `src/dendrogram/dendro_cluster.py` | tree building, cutting, the four rules, silhouette, GPU helpers |
+| `src/dendrogram/dinov2_dendro.py` | runs all variants over a dataset, caches masks, writes metrics and figures |
+| `src/dendrogram/summarize_dendro.py` | tables, paired statistics vs k-means, best-variant panels |
+| `results/dendrogram/{usod,suim_saliency,suim_nonwater}/` | `metrics_s*.csv`, `summary_s*.md`, `stats_s*.csv`, `dendrograms/`, `compare/`, `panels_best/` |
+| `results/dendrogram/_cache/` | cached cut masks per image |
 
 ## 10. How to run
 
@@ -201,14 +201,14 @@ Why it helps: the tree does not force k in advance, and Average linkage with the
 source /home/vallabh/Research/Samyak/.venv/bin/activate
 
 # build trees, cut, score (both strides, USOD)
-python dendrogram_code/dinov2_dendro.py --data USOD --gts usod --stride 14
-python dendrogram_code/dinov2_dendro.py --data USOD --gts usod --stride 3
+python src/dendrogram/dinov2_dendro.py --data USOD --gts usod --stride 14
+python src/dendrogram/dinov2_dendro.py --data USOD --gts usod --stride 3
 
 # tables, statistics vs k-means, best-variant panels
-python dendrogram_code/summarize_dendro.py --gt usod --strides 14 3
+python src/dendrogram/summarize_dendro.py --gt usod --strides 14 3
 ```
 
-SUIM: add `--data SUIM/TEST --gts suim_saliency suim_nonwater` and run `summarize_dendro.py` with `--gt suim_saliency` / `--gt suim_nonwater`. Total runtime for everything was about 73 minutes.
+SUIM: add `--data data/SUIM/TEST --gts suim_saliency suim_nonwater` and run `src/dendrogram/summarize_dendro.py` with `--gt suim_saliency` / `--gt suim_nonwater`. Total runtime for everything was about 73 minutes.
 
 ## 11. One-paragraph takeaway
 

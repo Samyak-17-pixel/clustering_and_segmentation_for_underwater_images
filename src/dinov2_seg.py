@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 from gt_utils import GT_MODES, drop_degenerate, load_gt
 
-ROOT = Path(__file__).parent
+ROOT = Path(__file__).resolve().parent.parent
 MEAN = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
 STD = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
 PATCH = 14
@@ -82,8 +82,8 @@ def metrics(prob, gt):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", default=ROOT / "USOD")
-    ap.add_argument("--out", default=ROOT / "dinov2_results")
+    ap.add_argument("--data", default=ROOT / "data" / "USOD")
+    ap.add_argument("--out", default=ROOT / "results" / "usod")
     ap.add_argument("--model", default="dinov2_vitb14")
     ap.add_argument("--height", type=int, default=448)
     ap.add_argument("--width", type=int, default=588)
