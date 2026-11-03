@@ -43,7 +43,7 @@ Legend for each task: **GPU** = needs a CUDA machine, **CPU** = can run here. Ef
 ### A0. Housekeeping and reproducibility (CPU, about 1 hour)
 
 - [ ] **A0.1 Save the border-rule masks, not only the oracle masks.**
-  * **What:** in `src/dinov2_cluster_union.py` and `src/dinov2_cluster_union_stride.py`, also save the border-rule prediction to
+  * **What:** in `src/kmeans/dinov2_cluster_union.py` and `src/kmeans/dinov2_cluster_union_stride.py`, also save the border-rule prediction to
     `masks_rgb_border/` and `masks_768_border/`.
   * **Why:** today `masks_rgb/` and `masks_768/` hold the **oracle** masks, which were chosen using the ground truth. Anyone
     who uses them as "predictions" gets numbers that are too optimistic.
@@ -98,16 +98,16 @@ Legend for each task: **GPU** = needs a CUDA machine, **CPU** = can run here. Ef
 
 ### A3. Evaluation protocol we can trust (CPU, about 2 hours)
 
-* **What:** fixed data splits, multiple seeds, and the ability to add new runs to `src/analyze_results.py`.
+* **What:** fixed data splits, multiple seeds, and the ability to add new runs to `src/analysis/analyze_results.py`.
 * **Why:** A4 tunes a few weights and A6 trains a probe. Without held-out folds, those numbers would be measured on the data
   they were tuned on. Seeds are needed because several current differences are only about 0.01 to 0.03 IoU.
 * **For:** being able to say "method X is better" with evidence.
 * **How:**
   1. `splits.json`: 5 folds of 60 images (seed 0). Anything trained or tuned is reported as the mean over held-out folds.
   2. Run the clustering with seeds 0 to 4; report the mean and standard deviation of the mean IoU.
-  3. Add `--extra-run NAME=path/to/metrics_union.csv` to `src/analyze_results.py` so new runs appear in all figures and in
+  3. Add `--extra-run NAME=path/to/metrics_union.csv` to `src/analysis/analyze_results.py` so new runs appear in all figures and in
      the significance table, compared against the current E4/E3 baselines.
-* **Done when:** `src/analyze_results.py --extra-run ...` produces the comparison figures and paired tests for any new run.
+* **Done when:** `src/analysis/analyze_results.py --extra-run ...` produces the comparison figures and paired tests for any new run.
 
 ### A4. Better label-free foreground selection (GPU for the cache, then CPU; about 2 days). Highest priority.
 
@@ -118,7 +118,7 @@ Legend for each task: **GPU** = needs a CUDA machine, **CPU** = can run here. Ef
   clusters as foreground too.
 * **For:** the realistic (deployable) score. Target: **label-free IoU at least 0.60** (from 0.52).
 * **How:** one script `select_foreground.py --method ...` that reads the cache, runs the clustering, applies a selector and writes
-  `results/usod/select_<method>/metrics_union.csv` in the existing CSV format. Methods, from cheapest to most involved:
+  `results/kmeans/usod/select_<method>/metrics_union.csv` in the existing CSV format. Methods, from cheapest to most involved:
 
 - [ ] **A4.1 k=2 fallback.**
   * **Approach:** keep k\* for the oracle, but always select the foreground from the k=2 clustering.
@@ -157,7 +157,7 @@ Legend for each task: **GPU** = needs a CUDA machine, **CPU** = can run here. Ef
   * **Reason to try it:** each failure image shows a different cue would have worked (centre for `usod_test205`, contrast
     for `usod_test174`). A learned combination of five numbers is still nearly label-free.
   * **Report it separately:** the fitted version uses a little supervision.
-* **Done when:** all five methods are in the `src/analyze_results.py` comparison, with confidence intervals and paired tests against the border rule.
+* **Done when:** all five methods are in the `src/analysis/analyze_results.py` comparison, with confidence intervals and paired tests against the border rule.
   We keep the best one as the new default selector.
 
 ### A5. Better features: registers, cosine distance, higher resolution (GPU, about 1 day)

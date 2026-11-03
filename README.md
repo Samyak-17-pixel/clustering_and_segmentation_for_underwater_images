@@ -196,7 +196,7 @@ SUIM was added on 2026-10-28. Only its **110 test images** were used; nothing wa
 * `masks/Saliency/` is a separate black/white **salient-object** mask (about 20% of the image on average).
 * There is no folder for water (BW): it is everything the class masks do not cover.
 
-**Two binary ground truths were derived** (`src/gt_utils.py`, flag `--gt`):
+**Two binary ground truths were derived** (`src/common/gt_utils.py`, flag `--gt`):
 
 | GT | Definition | Foreground share (mean) | Images used | Role |
 |---|---|---|---|---|
@@ -557,7 +557,7 @@ With binarised ground truth $G$, per image, then averaged over 300 images:
 ## 10. Results and comparisons
 
 All numbers: mean over the 300 USOD images (median in brackets where useful), ViT-B/14, input 448×588.
-Per-image files: `results/usod/metrics.csv` (E1) and `results/usod/*/metrics_union.csv` (E2-E4).
+Per-image files: `results/kmeans/usod/metrics.csv` (E1) and `results/kmeans/usod/*/metrics_union.csv` (E2-E4).
 
 ### 10.1 E1: single split (k=2)
 
@@ -652,8 +652,8 @@ small methodological difference.
 
 ### 10.8 Visual summary and statistics
 
-Everything in this subsection is produced by `src/analyze_results.py` (CPU only, about 10 s, no model needed) from the CSVs above and the
-USOD masks. Figures go to `docs/figures/analysis/`, tables to `results/usod/analysis/` (`summary.csv`, `significance.csv`,
+Everything in this subsection is produced by `src/analysis/analyze_results.py` (CPU only, about 10 s, no model needed) from the CSVs above and the
+USOD masks. Figures go to `docs/figures/analysis/`, tables to `results/analysis/` (`summary.csv`, `significance.csv`,
 `per_image.csv`, and `summary.json` with `--export-json`). Confidence intervals are 95% bootstrap intervals over images (2,000 resamples,
 seed 0); paired tests are Wilcoxon signed-rank tests on the per-image IoU.
 
@@ -699,7 +699,7 @@ intuition in Sec. 11.3, objects that touch the image edge (n=142) do **not** sco
 | Oracle vs border rule, E3 768-D | +0.179 | [+0.155, +0.204] | < 0.001 | 147 / 0 |
 | E3 768-D border vs E1 k-means k=2 | +0.033 | [+0.008, +0.055] | < 0.001 | 196 / 99 |
 
-Full table: `results/usod/analysis/significance.csv`. This updates Sec. 10.6(b): for **768-D** the stride makes no significant difference, but for
+Full table: `results/analysis/significance.csv`. This updates Sec. 10.6(b): for **768-D** the stride makes no significant difference, but for
 **PCA-RGB with the border rule** the +0.019 gain from stride 3 is small yet statistically consistent (CI excludes 0). Multiple comparisons are not corrected.
 
 **Qualitative observation from the worst-case gallery.** In several of the worst images (hazy open water, small robots and divers) the PCA-RGB map of
@@ -718,7 +718,7 @@ An interactive version of these results (filterable per-image table, scatter wit
 
 Each panel shows, left to right: the image; PCA-RGB at stride 14; PCA-RGB at stride 3; the PCA-RGB clusters ($k^*$); the best union for PCA-RGB; the 768-D clusters;
 the best union for 768-D; the ground truth. Titles give the IoU of the oracle union and, in brackets, the border-rule IoU. (First-baseline panels for E1 are in
-`results/usod/panels/` and two are copied below.)
+`results/kmeans/usod/panels/` and two are copied below.)
 
 ### 11.1 PCA-RGB, stride 14 vs 3
 
@@ -890,29 +890,31 @@ unsupervised_clustering_for_underwater_images/
 ├── README.md                    # this file
 ├── CLAUDE.md                    # working conventions for the assistant ("(*)" questions: max 50 words)
 ├── LICENSE
-├── src/                         # all code
-│   ├── dinov2_seg.py                    # E1: PCA mask + k-means (k=2)
-│   ├── dinov2_cluster_union.py          # E2: k=2..4, PCA-RGB and 768-D, oracle union + border rule
-│   ├── dinov2_cluster_union_stride.py   # E3/E4: dense (overlapping-window) features, k up to --kmax
-│   ├── gt_utils.py                      # ground-truth loading: --gt usod | suim_saliency | suim_nonwater, blank-GT filter
-│   ├── analyze_results.py               # CPU-only analysis of the USOD k-means CSVs: CIs, paired tests, failure analysis (Sec. 10.8)
-│   └── dendrogram/                      # Sec. 19: dendro_cluster.py, dinov2_dendro.py, summarize_dendro.py
+├── src/                         # all code, one folder per approach
+│   ├── kmeans/                          # k-means pipeline (Sec. 7-10)
+│   │   ├── dinov2_seg.py                    # E1: PCA mask + k-means (k=2)
+│   │   ├── dinov2_cluster_union.py          # E2: k=2..4, PCA-RGB and 768-D, oracle union + border rule
+│   │   └── dinov2_cluster_union_stride.py   # E3/E4: dense (overlapping-window) features, k up to --kmax
+│   ├── dendrogram/                      # hierarchical clustering (Sec. 19): dendro_cluster.py, dinov2_dendro.py, summarize_dendro.py
+│   ├── analysis/analyze_results.py      # CPU-only statistics on the k-means CSVs: CIs, paired tests, failure analysis (Sec. 10.8)
+│   └── common/gt_utils.py               # shared: ground-truth loading (--gt usod | suim_saliency | suim_nonwater), blank-GT filter
 ├── data/                        # datasets (never modified)
 │   ├── USOD/                            # images/, masks/, checkpoints/ (large files git-ignored)
 │   └── SUIM/                            # git-ignored (4.9 GB); TEST/ used, train_val/ not used
-├── results/                     # all experiment outputs
-│   ├── usod/                            # k-means on USOD
-│   │   ├── panels/ masks_pca/ masks_kmeans/ metrics.csv      # E1
-│   │   ├── cluster_union_stride14_k4/                        # E2 (panels/, masks_rgb/, masks_768/, metrics_union.csv)
-│   │   ├── cluster_union_stride3_k6/                         # E3
-│   │   ├── cluster_union_stride14_k6/                        # E4
-│   │   └── analysis/                                         # summary.csv, significance.csv, per_image.csv, summary.json (Sec. 10.8)
-│   ├── suim_saliency/                   # same sub-folders, SUIM test, Saliency GT (108 images)
-│   ├── suim/                            # same sub-folders, SUIM test, "not water" GT (92 images)
-│   └── dendrogram/                      # Sec. 19
-│       ├── usod/  suim_saliency/  suim_nonwater/   # each: metrics_s14.csv, metrics_s3.csv, summary_s*.md/.csv, stats_s*.csv,
-│       │                                           #       compare/, dendrograms/, panels_best/, (excluded_images.txt)
-│       └── _cache/                                 # per-image masks of every variant (git-ignored)
+├── results/                     # all experiment outputs, one folder per approach
+│   ├── kmeans/
+│   │   ├── usod/                        # k-means on USOD
+│   │   │   ├── panels/ masks_pca/ masks_kmeans/ metrics.csv      # E1
+│   │   │   ├── cluster_union_stride14_k4/                        # E2 (panels/, masks_rgb/, masks_768/, metrics_union.csv)
+│   │   │   ├── cluster_union_stride3_k6/                         # E3
+│   │   │   └── cluster_union_stride14_k6/                        # E4
+│   │   ├── suim_saliency/               # same sub-folders, SUIM test, Saliency GT (108 images)
+│   │   └── suim/                        # same sub-folders, SUIM test, "not water" GT (92 images)
+│   ├── dendrogram/                      # Sec. 19
+│   │   ├── usod/  suim_saliency/  suim_nonwater/   # each: metrics_s14.csv, metrics_s3.csv, summary_s*.md/.csv, stats_s*.csv,
+│   │   │                                           #       compare/, dendrograms/, panels_best/, (excluded_images.txt)
+│   │   └── _cache/                                 # per-image masks of every variant (git-ignored)
+│   └── analysis/                        # summary.csv, significance.csv, per_image.csv, summary.json (Sec. 10.8)
 ├── docs/
 │   ├── figures/ (and figures/analysis/)  # curated panels used in this README
 │   ├── DENDROGRAMS.md                    # dendrograms in plain words
@@ -921,25 +923,25 @@ unsupervised_clustering_for_underwater_images/
 └── presentations/               # Review 2 deck (.pptx), its build scripts, figures and speaker.md
 ```
 
-The Python environment (`.venv/`) lives one level above this folder. Run all commands from the repository root. Script defaults point at `data/USOD` and `results/usod/...`; the PNG outputs of the SUIM and dendrogram runs are git-ignored, so only their CSV/summary files are in the repository.
+The Python environment (`.venv/`) lives one level above this folder. Run all commands from the repository root. Script defaults point at `data/USOD` and `results/kmeans/usod/...`; the PNG outputs of the SUIM and dendrogram runs are git-ignored, so only their CSV/summary files are in the repository.
 
 Note: `masks_rgb/` and `masks_768/` in the E2-E4 folders hold the **oracle** masks (chosen with the ground truth), not the border-rule predictions.
 
 **Commands**
 
 ```bash
-.venv/bin/python src/dinov2_seg.py                                         # E1 (about 3 min)
-.venv/bin/python src/dinov2_cluster_union.py                               # E2 (about 11 min)
-.venv/bin/python src/dinov2_cluster_union_stride.py --stride 3  --kmax 6   # E3 (about 30 min)
-.venv/bin/python src/dinov2_cluster_union_stride.py --stride 14 --kmax 6 \
-        --out results/usod/cluster_union_stride14_k6                 # E4 (about 10 min)
+.venv/bin/python src/kmeans/dinov2_seg.py                                         # E1 (about 3 min)
+.venv/bin/python src/kmeans/dinov2_cluster_union.py                               # E2 (about 11 min)
+.venv/bin/python src/kmeans/dinov2_cluster_union_stride.py --stride 3  --kmax 6   # E3 (about 30 min)
+.venv/bin/python src/kmeans/dinov2_cluster_union_stride.py --stride 14 --kmax 6 \
+        --out results/kmeans/usod/cluster_union_stride14_k6                 # E4 (about 10 min)
 # quick test of any script: add --limit 10
 
 # SUIM k-means (same scripts, new --gt flag; -min-water-frac only matters for suim_nonwater)
-.venv/bin/python src/dinov2_cluster_union_stride.py --data data/SUIM/TEST --gt suim_saliency --stride 3 --kmax 6 \
-        --out results/suim_saliency/cluster_union_stride3_k6
-.venv/bin/python src/dinov2_cluster_union_stride.py --data data/SUIM/TEST --gt suim_nonwater --min-water-frac 0.02 --stride 3 --kmax 6 \
-        --out results/suim/cluster_union_stride3_k6
+.venv/bin/python src/kmeans/dinov2_cluster_union_stride.py --data data/SUIM/TEST --gt suim_saliency --stride 3 --kmax 6 \
+        --out results/kmeans/suim_saliency/cluster_union_stride3_k6
+.venv/bin/python src/kmeans/dinov2_cluster_union_stride.py --data data/SUIM/TEST --gt suim_nonwater --min-water-frac 0.02 --stride 3 --kmax 6 \
+        --out results/kmeans/suim/cluster_union_stride3_k6
 
 # dendrograms (Sec. 19): about 10 min for stride 14 and about 1 h for stride 3, all three GT sets together
 for S in 14 3; do
@@ -949,13 +951,13 @@ done
 for G in usod suim_saliency suim_nonwater; do .venv/bin/python src/dendrogram/summarize_dendro.py --gt $G --strides 14 3; done
 
 # Sec. 10.8 statistics and figures (CPU, about 10 s)
-python3 src/analyze_results.py --export-json
+python3 src/analysis/analyze_results.py --export-json
 ```
 
 **Determinism.** `random_state=0` for k-means and silhouette sampling; fixed `numpy` generator (seed 0) for the 5,000-patch subsample. GPU fp16 can still cause
 tiny numerical differences between runs. **Run times** are approximate, for the machine above.
 
-**Checks done:** `src/dinov2_cluster_union_stride.py --stride 14 --kmax 4 --limit 10` reproduced the earlier E2 results exactly;
+**Checks done:** `src/kmeans/dinov2_cluster_union_stride.py --stride 14 --kmax 4 --limit 10` reproduced the earlier E2 results exactly;
 oracle IoU ≥ border-rule IoU for all 600 rows of E2; all result tables above were computed from the CSV files.
 
 **Known setup quirks:** see Sec. 9, E0.
@@ -1402,7 +1404,7 @@ Code: `src/dendrogram/dendro_cluster.py` (trees, cuts, rules, silhouette, metric
 
 | Date | Change |
 |---|---|
-| 2026-11-03 | v1.2: reorganised the repository into `src/`, `data/`, `results/`, `docs/`, `presentations/` (USOD results folder is now `results/usod/`) and updated all scripts and paths; merged the SUIM + dendrogram work (SUIM test split with two derived GTs and blank-GT exclusions, Sec. 5.2; dendrogram study, Sec. 19: 16 variants x 4 selection rules x strides 14/3 on USOD, SUIM-Saliency, SUIM-not-water, with bootstrap CIs and Wilcoxon tests) with the 2026-10-22 analysis work (Sec. 10.8, `docs/ROADMAP.md`); updated TL;DR, roadmap, limitations, conclusion, layout, glossary, references |
-| 2026-10-22 | v1.1: added `src/analyze_results.py` and Sec. 10.8 (bootstrap CIs, paired tests, failure categories, k\* and object-size analysis, galleries); corrected Sec. 10.6(b) and Sec. 11 failure-mode claims with the new statistics; added `docs/ROADMAP.md` |
+| 2026-11-03 | v1.2: reorganised the repository into `src/`, `data/`, `results/`, `docs/`, `presentations/`, with code and results split per approach (`kmeans/`, `dendrogram/`, `analysis/`) and updated all scripts and paths; merged the SUIM + dendrogram work (SUIM test split with two derived GTs and blank-GT exclusions, Sec. 5.2; dendrogram study, Sec. 19: 16 variants x 4 selection rules x strides 14/3 on USOD, SUIM-Saliency, SUIM-not-water, with bootstrap CIs and Wilcoxon tests) with the 2026-10-22 analysis work (Sec. 10.8, `docs/ROADMAP.md`); updated TL;DR, roadmap, limitations, conclusion, layout, glossary, references |
+| 2026-10-22 | v1.1: added `src/analysis/analyze_results.py` and Sec. 10.8 (bootstrap CIs, paired tests, failure categories, k\* and object-size analysis, galleries); corrected Sec. 10.6(b) and Sec. 11 failure-mode claims with the new statistics; added `docs/ROADMAP.md` |
 | 2026-10-15 | v1.0: full report rewrite. Added problem statement, motivation, AUV applications, dataset sources, DINOv2 deep-dive, experiment history E0-E4, full results, figures and failure analysis, feasibility timings, roadmap, limitations, reproducibility, glossary, references |
 | earlier | Initial README with the k=2 pipeline and the 2-4 cluster oracle section |

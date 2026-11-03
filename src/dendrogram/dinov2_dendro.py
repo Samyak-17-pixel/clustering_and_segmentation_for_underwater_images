@@ -21,7 +21,8 @@ from scipy.cluster.hierarchy import dendrogram
 from tqdm import tqdm
 
 REPO = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO / "src"))
+sys.path.insert(0, str(REPO / "src" / "common"))
+sys.path.insert(0, str(REPO / "src" / "kmeans"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from dendro_cluster import (KS, LINKAGES, RULES, build_tree, cut_labels, gap_k, make_sampling_grid, metrics_batch,

@@ -57,7 +57,7 @@ def csv_rows(path):
 
 
 def km_mean(folder, feat, key):
-    rows = [r for r in csv_rows(REPO / "results" / "usod" / folder / "metrics_union.csv") if r["feat"] == feat]
+    rows = [r for r in csv_rows(REPO / "results" / "kmeans" / "usod" / folder / "metrics_union.csv") if r["feat"] == feat]
     return float(np.mean([float(r[key]) for r in rows]))
 
 
@@ -70,7 +70,7 @@ ORACLE_BY_K = {feat: [km_mean("cluster_union_stride14_k6", feat, f"oracle_iou_k{
 SUMMARY = {(r["feat"], r["spatial"], r["linkage"]): r for r in csv_rows(REPO / "results" / "dendrogram" / "usod/summary_s3.csv")}
 STATS = {(r["feat"], r["spatial"], r["linkage"], r["rule"]): r for r in csv_rows(REPO / "results" / "dendrogram" / "usod/stats_s3.csv")}
 BEST = STATS["768", "free", "average", "gap_border"]
-_base = {r["image"]: float(r["border_iou"]) for r in csv_rows(REPO / "results/usod/cluster_union_stride3_k6/metrics_union.csv") if r["feat"] == "768"}
+_base = {r["image"]: float(r["border_iou"]) for r in csv_rows(REPO / "results/kmeans/usod/cluster_union_stride3_k6/metrics_union.csv") if r["feat"] == "768"}
 _new = {r["image"]: float(r["iou"]) for r in csv_rows(REPO / "results" / "dendrogram" / "usod/metrics_s3.csv")
         if (r["feat"], r["spatial"], r["linkage"], r["rule"]) == ("768", "free", "average", "gap_border")}
 _d = np.array([_new[i] - _base[i] for i in _new])
@@ -79,13 +79,13 @@ SUIM_BEST = {(r["feat"], r["spatial"], r["linkage"], r["rule"]): r
              for r in csv_rows(REPO / "results" / "dendrogram" / "suim_saliency/stats_s3.csv")}["768", "free", "average", "gap_border"]
 
 
-_k4 = {r["image"]: float(r["border_iou"]) for r in csv_rows(REPO / "results/usod/cluster_union_stride14_k4/metrics_union.csv") if r["feat"] == "768"}
-_k6 = {r["image"]: float(r["border_iou"]) for r in csv_rows(REPO / "results/usod/cluster_union_stride14_k6/metrics_union.csv") if r["feat"] == "768"}
+_k4 = {r["image"]: float(r["border_iou"]) for r in csv_rows(REPO / "results/kmeans/usod/cluster_union_stride14_k4/metrics_union.csv") if r["feat"] == "768"}
+_k6 = {r["image"]: float(r["border_iou"]) for r in csv_rows(REPO / "results/kmeans/usod/cluster_union_stride14_k6/metrics_union.csv") if r["feat"] == "768"}
 SHARE_GOOD_K4 = float(np.mean([v >= 0.70 for v in _k4.values()]))
 N_BETTER_K6 = sum(_k6[i] - _k4[i] > 0.10 for i in _k4)
 N_WORSE_K6 = sum(_k4[i] - _k6[i] > 0.10 for i in _k4)
-_o4 = {r["image"]: float(r["oracle_iou"]) for r in csv_rows(REPO / "results/usod/cluster_union_stride14_k4/metrics_union.csv") if r["feat"] == "768"}
-_o6 = {r["image"]: float(r["oracle_iou"]) for r in csv_rows(REPO / "results/usod/cluster_union_stride14_k6/metrics_union.csv") if r["feat"] == "768"}
+_o4 = {r["image"]: float(r["oracle_iou"]) for r in csv_rows(REPO / "results/kmeans/usod/cluster_union_stride14_k4/metrics_union.csv") if r["feat"] == "768"}
+_o6 = {r["image"]: float(r["oracle_iou"]) for r in csv_rows(REPO / "results/kmeans/usod/cluster_union_stride14_k6/metrics_union.csv") if r["feat"] == "768"}
 N_ORACLE_BETTER_K6 = sum(_o6[i] - _o4[i] > 0.10 for i in _o4)
 
 

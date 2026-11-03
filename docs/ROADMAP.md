@@ -2,7 +2,7 @@
 
 Plan for the next round of experiments, to be run on a machine with a CUDA GPU (the reference machine in the README is an
 RTX A2000 12 GB). Every phase reuses the evaluation of the existing scripts (IoU / F / MAE on USOD, 300 images) and is
-summarised with `src/analyze_results.py` (bootstrap CIs and paired Wilcoxon tests), so new numbers are directly comparable with
+summarised with `src/analysis/analyze_results.py` (bootstrap CIs and paired Wilcoxon tests), so new numbers are directly comparable with
 README Sec. 10.
 
 **Starting point (README Sec. 10.8).** Stride 3, 768-D: oracle 0.702, border rule 0.523. Of 300 images, 168 succeed,
@@ -47,7 +47,7 @@ features once makes every later clustering/selection experiment run in minutes, 
    * optionally `inter`: `model.get_intermediate_layers(x, n=4, reshape=True)` for multi-layer features.
 
    Size estimate: ViT-B at 448×588 is 1,344 × 768 × 2 bytes ≈ 2 MB per image for `patch`, about 1.5 GB for all arrays over 300 images.
-2. **`--features` flag** in `src/dinov2_cluster_union_stride.py` (and new scripts) to read the cache instead of running the model.
+2. **`--features` flag** in `src/kmeans/dinov2_cluster_union_stride.py` (and new scripts) to read the cache instead of running the model.
 3. **GPU clustering**: replace scikit-learn with torch: `torch.pca_lowrank` for PCA, a batched Lloyd's k-means with k-means++
    init on the GPU, and a sampled silhouette in torch. Check equivalence on 10 images against the current CSVs (IoU within 0.01).
 
@@ -56,7 +56,7 @@ features once makes every later clustering/selection experiment run in minutes, 
 1. **Fixed splits**: `splits.json` with a 5-fold split of the 300 USOD images (seed 0). Anything that is trained or tuned
    (Phase 2 weights, Phase 5 probes) is reported as the mean over the 5 held-out folds.
 2. **Seeds**: rerun the clustering with seeds 0-4 and report mean ± std of the mean IoU.
-3. **Statistics**: extend `src/analyze_results.py` with `--extra-run name=path/to/metrics_union.csv` so new runs appear in all figures,
+3. **Statistics**: extend `src/analysis/analyze_results.py` with `--extra-run name=path/to/metrics_union.csv` so new runs appear in all figures,
    with bootstrap CIs and paired Wilcoxon tests against the current best.
 4. **AUV-relevant metrics** (new `eval_auv.py`):
    * image-level "object present": score = foreground fraction in the central ROI (middle third), report AUROC;
@@ -86,7 +86,7 @@ The selection failures (98 images) concentrate where silhouette picks k\* ≥ 3.
    the border rule is unambiguous (exactly one cluster below the border fraction).
 
 Deliverable: `select_foreground.py --method {border,prototype,score,attention,tokencut,dsm}` writing
-`results/usod/select_<method>/metrics_union.csv` with the same columns as now.
+`results/kmeans/usod/select_<method>/metrics_union.csv` with the same columns as now.
 
 ## Phase 3: better features
 
@@ -131,6 +131,6 @@ Deliverable: `select_foreground.py --method {border,prototype,score,attention,to
 ## Suggested first week on the GPU machine
 
 1. Phase 0 cache for `dinov2_vitb14` and `dinov2_vitb14_reg` at 448×588 and 644×868.
-2. Phase 2 methods 1, 3 and 4 on the cached features (minutes each), compared against the border rule with `src/analyze_results.py`.
+2. Phase 2 methods 1, 3 and 4 on the cached features (minutes each), compared against the border rule with `src/analysis/analyze_results.py`.
 3. Phase 3 items 1-3 (registers, cosine k-means, higher resolution), comparing oracle IoU and cluster-failure counts.
 4. Phase 5 linear probe with 5-fold CV, as the "light supervision" reference point.

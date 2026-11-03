@@ -186,7 +186,7 @@ The summary box repeats the key point: ground truth is used only for evaluation,
 
 ## Backup: optional facts if asked about early results
 
-Say these only if asked, because Review 1 is about the plan. All numbers are means over the 300 USOD images and come from the CSV files in `results/usod/`.
+Say these only if asked, because Review 1 is about the plan. All numbers are means over the 300 USOD images and come from the CSV files in `results/kmeans/usod/`.
 
 - Simple baselines (2 clusters, border rule): PCA mask IoU 0.418, K-means IoU 0.490.
 - With the oracle choosing the best cluster combination using ground truth (an upper bound): IoU about 0.66–0.70.
@@ -201,7 +201,7 @@ Say these only if asked, because Review 1 is about the plan. All numbers are mea
 
 # Part 2: Concept explainers (for answering questions)
 
-These sections explain the ideas behind slides 2, 5, 6 and 7 in more depth. All numbers and settings are the ones used in the code (`src/dinov2_seg.py`, `src/dinov2_cluster_union.py`).
+These sections explain the ideas behind slides 2, 5, 6 and 7 in more depth. All numbers and settings are the ones used in the code (`src/kmeans/dinov2_seg.py`, `src/kmeans/dinov2_cluster_union.py`).
 
 ## A. What DINOv2 does
 

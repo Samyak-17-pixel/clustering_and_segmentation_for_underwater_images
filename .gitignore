@@ -12,5 +12,5 @@ __pycache__/
 # (CSV/summary files are kept; figures used in the docs live in docs/figures/)
 results/dendrogram/_cache/
 results/dendrogram/**/*.png
-results/suim*/**/masks_*
-results/suim*/**/panels
+results/kmeans/suim*/**/masks_*
+results/kmeans/suim*/**/panels
