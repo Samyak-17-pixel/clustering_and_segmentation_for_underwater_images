@@ -1,5 +1,7 @@
 # Speaker notes: Project Review 1
 
+> **Which part is current:** the notes up to the line "Review 2 deck: speaker notes" belong to the old Review 1 deck (9 slides). For Review 2 (16 slides) jump to "# Review 2 deck: speaker notes (slides 3-16)".
+
 Deck: *Unsupervised Underwater Object Segmentation Using Pretrained Vision Transformer Features* (9 slides, `ppts/…pptx.pdf`).
 Suggested pace: about 8–10 minutes, roughly 1 minute per content slide, then questions.
 
@@ -184,7 +186,7 @@ The summary box repeats the key point: ground truth is used only for evaluation,
 
 ## Backup: optional facts if asked about early results
 
-Say these only if asked, because Review 1 is about the plan. All numbers are means over the 300 USOD images and come from the CSV files in `dinov2_results/`.
+Say these only if asked, because Review 1 is about the plan. All numbers are means over the 300 USOD images and come from the CSV files in `dinov2_results_usod/`.
 
 - Simple baselines (2 clusters, border rule): PCA mask IoU 0.418, K-means IoU 0.490.
 - With the oracle choosing the best cluster combination using ground truth (an upper bound): IoU about 0.66–0.70.
