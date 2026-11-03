@@ -1,7 +1,7 @@
 """Quantitative and visual summary of the existing DINOv2 clustering results (CPU only, no model needed).
 
-Reads results/usod/metrics.csv (E1) and results/usod/*/metrics_union.csv (E2-E4) plus the USOD ground-truth
-masks, and writes figures to docs/figures/analysis/ and tables to results/usod/analysis/.
+Reads results/kmeans/usod/metrics.csv (E1) and results/kmeans/usod/*/metrics_union.csv (E2-E4) plus the USOD ground-truth
+masks, and writes figures to docs/figures/analysis/ and tables to results/analysis/.
 """
 import argparse
 import json
@@ -15,7 +15,7 @@ import pandas as pd
 from PIL import Image
 from scipy import ndimage, stats
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 RUNS = {  # run id -> (csv directory, short description)
     "E2": ("cluster_union_stride14_k4", "stride 14, k<=4"),
     "E4": ("cluster_union_stride14_k6", "stride 14, k<=6"),
@@ -417,14 +417,14 @@ def export_json(frames, attrs, summ, sig, path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--results", default=ROOT / "results" / "usod")
+    ap.add_argument("--results", default=ROOT / "results" / "kmeans" / "usod")
     ap.add_argument("--data", default=ROOT / "data" / "USOD")
     ap.add_argument("--fig-out", default=ROOT / "docs" / "figures" / "analysis")
     ap.add_argument("--export-json", action="store_true", help="also write analysis/summary.json for dashboards")
     args = ap.parse_args()
 
     res, fig_out = Path(args.results), Path(args.fig_out)
-    tab_out = res / "analysis"
+    tab_out = ROOT / "results" / "analysis"
     fig_out.mkdir(parents=True, exist_ok=True)
     tab_out.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(0)

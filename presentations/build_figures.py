@@ -17,7 +17,7 @@ from PIL import Image, ImageDraw
 from scipy.cluster.hierarchy import dendrogram, linkage
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(REPO / "src"), str(REPO / "src" / "dendrogram")]
+sys.path[:0] = [str(REPO / "src" / "common"), str(REPO / "src" / "kmeans"), str(REPO / "src" / "dendrogram")]
 
 from dendro_cluster import build_tree, gap_k                                          # noqa: E402
 from dinov2_dendro import FeatureContext, evaluate_tree                               # noqa: E402

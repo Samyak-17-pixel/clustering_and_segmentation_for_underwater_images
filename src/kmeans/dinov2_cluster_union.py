@@ -19,6 +19,8 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from tqdm import tqdm
 
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
 from gt_utils import GT_MODES, drop_degenerate, load_gt
 
 from dinov2_seg import ROOT, load_model, metrics, patch_features, pca_masks, upsample
@@ -76,7 +78,7 @@ def process_feature(X, grid, gt):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default=ROOT / "data" / "USOD")
-    ap.add_argument("--out", default=ROOT / "results" / "usod" / "cluster_union_stride14_k4")
+    ap.add_argument("--out", default=ROOT / "results" / "kmeans" / "usod" / "cluster_union_stride14_k4")
     ap.add_argument("--model", default="dinov2_vitb14")
     ap.add_argument("--height", type=int, default=448)
     ap.add_argument("--width", type=int, default=588)

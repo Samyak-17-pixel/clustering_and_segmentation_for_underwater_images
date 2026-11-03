@@ -17,7 +17,7 @@ from scipy.stats import wilcoxon
 from tqdm import tqdm
 
 REPO = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO / "src"))
+sys.path.insert(0, str(REPO / "src" / "common"))
 
 from gt_utils import load_gt
 
@@ -32,7 +32,7 @@ def read_rows(path):
 
 
 def baseline(gt, stride):
-    d = REPO / "results" / BASELINE_DIR[gt] / f"cluster_union_stride{stride}_k6"
+    d = REPO / "results" / "kmeans" / BASELINE_DIR[gt] / f"cluster_union_stride{stride}_k6"
     out = defaultdict(dict)
     for r in read_rows(d / "metrics_union.csv"):
         out[r["feat"]][r["image"]] = (float(r["border_iou"]), float(r["oracle_iou"]))
