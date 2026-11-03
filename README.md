@@ -1,6 +1,6 @@
 # Training-free underwater object segmentation with DINOv2
 
-**Version 1.1 · last updated 2026-10-29 · datasets: USOD (300 images, Sec. 1-18), SUIM test set (110 images, Sec. 5.2 and 19)**
+**Version 1.2 · last updated 2026-11-03 · datasets: USOD (300 images, Sec. 1-18), SUIM test set (110 images, Sec. 5.2 and 19)**
 
 A study of how far *frozen* DINOv2 features can go in separating "something is there" (foreground object)
 from "just water / background" in underwater images, **without training anything**, as a first perception
@@ -62,7 +62,10 @@ building block for an Autonomous Underwater Vehicle (AUV).
      difference ≤ 0.003 on average): the bottleneck is not the feature resolution.
   5. Not yet real time: the deployable path runs at about 2.5 to 6.5 FPS on a desktop RTX A2000 (Sec. 12),
      and was **not** tested on a Jetson or on empty-water frames.
-  6. **New (Sec. 19): replacing k-means by a dendrogram (hierarchical clustering) and choosing the cut with the
+  6. **Where the errors come from** (Sec. 10.8): the border rule matches the oracle when silhouette picks 2 clusters
+     (0.75 vs 0.76) and collapses when it must merge 3-6 (0.36-0.49); 30 of the 34 images where even the oracle fails are
+     objects under 10% of the image.
+  7. **New (Sec. 19): replacing k-means by a dendrogram (hierarchical clustering) and choosing the cut with the
      merge-height gap raises the label-free IoU from 0.52 to 0.65 on USOD** (stride 3, 768-D, average linkage),
      and from 0.43 to 0.55 on SUIM with the Saliency masks, both clearly beyond sampling noise. The oracle
      itself does not change much (0.70 to 0.71), so what improves is the *choice* of foreground, which was the
@@ -554,7 +557,7 @@ With binarised ground truth $G$, per image, then averaged over 300 images:
 ## 10. Results and comparisons
 
 All numbers: mean over the 300 USOD images (median in brackets where useful), ViT-B/14, input 448×588.
-Per-image files: `dinov2_results/metrics.csv` (E1) and `dinov2_results/*/metrics_union.csv` (E2-E4).
+Per-image files: `dinov2_results_usod/metrics.csv` (E1) and `dinov2_results_usod/*/metrics_union.csv` (E2-E4).
 
 ### 10.1 E1: single split (k=2)
 
@@ -628,8 +631,9 @@ about +0.06 to +0.11 (e.g. stride 3: 0.523 vs 0.467). Reducing to 3 dimensions t
 | Images where stride 3 gave a higher oracle IoU | 60.3% | 55.3% |
 
 Differences are tiny and of both signs: per image the change is roughly symmetric noise. Overlapping windows improve the *look* of the
-PCA-RGB map, **not the IoU**. I have not run a significance test or repeated the runs with other seeds, so I cannot claim
-that even the +0.019 for PCA-RGB is real. Note also that the stride-3 runs use sub-sampled k-means, a small methodological difference.
+PCA-RGB map, **not the IoU**. A paired test (Sec. 10.8) shows the 768-D differences are not significant, while the +0.019 for PCA-RGB with the
+border rule is small but consistent; runs with other seeds have still not been done. Note also that the stride-3 runs use sub-sampled k-means, a
+small methodological difference.
 
 **(c) Allowing up to 6 clusters (E4 vs E2).** The oracle rises (768-D: 0.676 → 0.703; PCA-RGB: 0.662 → 0.668), but the **realistic border-rule score falls** (768-D: 0.560 →
 0.531; PCA-RGB: 0.456 → 0.448). More clusters give the ground-truth-based selector more options, but make it harder for the label-free border rule to choose correctly.
@@ -646,13 +650,75 @@ that even the +0.019 for PCA-RGB is real. Note also that the stride-3 runs use s
 * One sanity check had a small exception: for `usod_test124` the oracle at k=2 was 0.003 below the earlier plain k-means IoU (0.843 vs 0.846);
   a k-means or fp16 difference between runs is the likely cause but I did not confirm it.
 
+### 10.8 Visual summary and statistics
+
+Everything in this subsection is produced by `analyze_results.py` (CPU only, about 10 s, no model needed) from the CSVs above and the
+USOD masks. Figures go to `docs/figures/analysis/`, tables to `dinov2_results_usod/analysis/` (`summary.csv`, `significance.csv`,
+`per_image.csv`, and `summary.json` with `--export-json`). Confidence intervals are 95% bootstrap intervals over images (2,000 resamples,
+seed 0); paired tests are Wilcoxon signed-rank tests on the per-image IoU.
+
+**All methods with confidence intervals.** The oracle and border-rule groups do not overlap anywhere; within each group, the 768-D vs PCA-RGB gap is
+larger than the CI width, while the differences between runs (E2/E3/E4) mostly are not.
+
+![method comparison](docs/figures/analysis/method_comparison.png)
+
+**Where the IoU is lost.** Each dot is one image. Images on the diagonal lose nothing to the label-free choice. With 768-D features at stride 3,
+168 images succeed (border-rule IoU ≥ 0.5), **98 are selection failures** (the oracle reaches ≥ 0.5 but the border rule does not) and 34 are cluster
+failures (no union of clusters reaches 0.5).
+
+![oracle vs border](docs/figures/analysis/oracle_vs_border.png)
+![failure breakdown](docs/figures/analysis/failure_breakdown.png)
+
+**The selection problem is specifically the multi-cluster rule.** When silhouette picks k\*=2, the border rule is essentially at the oracle
+(768-D: 0.748 vs 0.759, 1 selection failure in 102 images). With k\* ≥ 3 it falls to 0.36-0.49, and k\*=6 alone accounts for 45 of the 98 selection
+failures. The rule "every cluster with a below-average border fraction is foreground" (Sec. 8.7) is what needs replacing.
+
+![selection by k*](docs/figures/analysis/selection_by_kstar.png)
+
+**Object size explains the cluster failures.** Of the 34 cluster failures (768-D, E3), 30 are objects covering less than 10% of the image. Mean
+border-rule IoU is 0.01 for tiny objects (< 2%, n=5), 0.21 for small (2-10%, n=59), 0.56 for medium and 0.70 for large. Contrary to the
+intuition in Sec. 11.3, objects that touch the image edge (n=142) do **not** score worse on average (border rule 0.54 vs 0.50).
+
+![difficulty factors](docs/figures/analysis/difficulty_factors.png)
+
+**Other figures:** `iou_distribution.png` (survival curve and violins: the border-rule IoU is bimodal, with a cluster of images near 0),
+`oracle_vs_k.png` (oracle vs k and the k\* histogram), `stride_paired.png` (paired stride 3 vs 14 differences), and
+`gallery_{best,median,worst}.png` (six panels each, ranked by border-rule IoU, 768-D, E3).
+
+**Paired significance tests (IoU).**
+
+| Comparison (A vs B) | Mean diff A−B | 95% CI | Wilcoxon p | Images A better / B better |
+|---|---|---|---|---|
+| E3 768-D vs PCA-RGB, border rule | +0.056 | [+0.031, +0.079] | < 0.001 | 175 / 122 |
+| E3 768-D vs PCA-RGB, oracle | +0.031 | [+0.018, +0.043] | < 0.001 | 188 / 112 |
+| Stride 3 vs 14 (E3 vs E4), 768-D, border rule | −0.009 | [−0.023, +0.006] | 0.061 | 171 / 126 |
+| Stride 3 vs 14 (E3 vs E4), 768-D, oracle | −0.002 | [−0.008, +0.004] | 0.061 | 166 / 134 |
+| Stride 3 vs 14 (E3 vs E4), PCA-RGB, border rule | +0.019 | [+0.003, +0.035] | < 0.001 | 203 / 91 |
+| k ≤ 6 vs k ≤ 4 (E4 vs E2), 768-D, border rule | −0.029 | [−0.042, −0.016] | 0.004 | 54 / 68 |
+| k ≤ 6 vs k ≤ 4 (E4 vs E2), 768-D, oracle | +0.028 | [+0.019, +0.037] | < 0.001 | 89 / 31 |
+| Oracle vs border rule, E3 768-D | +0.179 | [+0.155, +0.204] | < 0.001 | 147 / 0 |
+| E3 768-D border vs E1 k-means k=2 | +0.033 | [+0.008, +0.055] | < 0.001 | 196 / 99 |
+
+Full table: `dinov2_results_usod/analysis/significance.csv`. This updates Sec. 10.6(b): for **768-D** the stride makes no significant difference, but for
+**PCA-RGB with the border rule** the +0.019 gain from stride 3 is small yet statistically consistent (CI excludes 0). Multiple comparisons are not corrected.
+
+**Qualitative observation from the worst-case gallery.** In several of the worst images (hazy open water, small robots and divers) the PCA-RGB map of
+the background shows a regular grid/checkerboard texture, and the 768-D clusters follow this texture rather than the object. This looks like the
+known artifact of DINOv2 feature maps that the register models (Sec. 6.1) were designed to remove; testing `dinov2_vitb14_reg` is therefore a
+cheap, well-motivated next experiment (see `docs/ROADMAP.md`).
+
+![worst cases](docs/figures/analysis/gallery_worst.png)
+
+An interactive version of these results (filterable per-image table, scatter with hover) is available as a Cursor canvas,
+`usod-dinov2-results.canvas.tsx`, in the project's canvases folder; it embeds the data from `summary.json`.
+
 ---
 
 ## 11. Figures and failure analysis
 
 Each panel shows, left to right: the image; PCA-RGB at stride 14; PCA-RGB at stride 3; the PCA-RGB clusters ($k^*$); the best union for PCA-RGB; the 768-D clusters;
 the best union for 768-D; the ground truth. Titles give the IoU of the oracle union and, in brackets, the border-rule IoU. (First-baseline panels for E1 are in
-`dinov2_results/panels/` and two are copied below.)
+`dinov2_results_usod/panels/` and two are copied below.)
 
 ### 11.1 PCA-RGB, stride 14 vs 3
 
@@ -697,10 +763,11 @@ First baseline (E1) panels for the same two images (PCA mask and k=2 k-means mas
 
 **Summary of failure modes**
 
-1. **Foreground selection (border rule).** Largest single weakness: oracle 0.70 vs border rule 0.52 on 768-D (`usod_test174`, `usod_test205`). Fails when the object touches the
-   border or the background does not.
+1. **Foreground selection (border rule).** Largest single weakness: oracle 0.70 vs border rule 0.52 on 768-D (`usod_test174`, `usod_test205`). Individual images fail when the
+   object touches the border or the background does not, but on average edge-touching objects are not worse (Sec. 10.8); the measured driver is the number of clusters
+   to merge (border rule ≈ oracle at k\*=2, far below it at k\* ≥ 3).
 2. **Small and thin objects.** A 14×14 patch is about 20×20 px of the original image; objects smaller than a few patches are lost, and stride 3 does not fix this because each
-   token still summarises a 14-px patch.
+   token still summarises a 14-px patch. Measured in Sec. 10.8: 30 of the 34 cluster failures are objects under 10% of the image.
 3. **Strong texture or lighting (caustics) and haze.** Clusters follow lighting rather than objects (`usod_test219`).
 4. **Annotation convention.** "Salient" in the ground truth sometimes includes large background-like regions (reef in `usod_test1` and `usod_test174`).
 5. **Multi-region scenes.** Water, sea floor, reef and object coexist; a 2-way split cannot represent them (E1), which is why E2 merges more clusters.
@@ -775,6 +842,9 @@ embedded device. They are from single runs of a few repetitions on one image and
 
 (Effort and benefit are my estimates, not measurements.)
 
+A detailed, phased GPU experiment plan (feature caching, evaluation protocol, label-free selectors, better features, refinement, light supervision,
+real-time deployment), with concrete scripts, commands and success criteria, is in [`docs/ROADMAP.md`](docs/ROADMAP.md); the matching actionable checklist is [`todo.md`](todo.md).
+
 ---
 
 ## 14. Limitations, threats to validity and safety note
@@ -822,16 +892,20 @@ unsupervised_clustering_for_underwater_images/
 ├── dinov2_seg.py                   # E1: PCA mask + k-means (k=2)
 ├── dinov2_cluster_union.py         # E2: k=2..4, PCA-RGB and 768-D, oracle union + border rule
 ├── dinov2_cluster_union_stride.py  # E3/E4: dense (overlapping-window) features, k up to --kmax
+├── analyze_results.py              # CPU-only analysis of the USOD k-means CSVs: CIs, paired tests, failure analysis, figures (Sec. 10.8)
 ├── gt_utils.py                     # ground-truth loading: --gt usod | suim_saliency | suim_nonwater, blank-GT filter
 ├── dendrogram_code/                # Sec. 19: dendro_cluster.py, dinov2_dendro.py, summarize_dendro.py
 ├── USOD/                           # data (never modified)
 ├── SUIM/                           # data (TEST/ used; train_val/ not used)
 ├── docs/figures/                   # curated panels used in this README
+├── docs/figures/analysis/          # figures from analyze_results.py (Sec. 10.8)
+├── docs/ROADMAP.md                 # phased GPU experiment plan
 ├── dinov2_results_usod/            # k-means results on USOD (renamed from dinov2_results/)
 │   ├── panels/ masks_pca/ masks_kmeans/ metrics.csv      # E1
 │   ├── cluster_union_stride14_k4/                        # E2 (panels/, masks_rgb/, masks_768/, metrics_union.csv)
 │   ├── cluster_union_stride3_k6/                         # E3
-│   └── cluster_union_stride14_k6/                        # E4
+│   ├── cluster_union_stride14_k6/                        # E4
+│   └── analysis/                                         # summary.csv, significance.csv, per_image.csv, summary.json (Sec. 10.8)
 ├── dinov2_results_suim_saliency/   # same sub-folders, SUIM test, Saliency GT (108 images)
 ├── dinov2_results_suim/            # same sub-folders, SUIM test, "not water" GT (92 images)
 └── dendrogram_results/
@@ -843,6 +917,8 @@ unsupervised_clustering_for_underwater_images/
 The Python environment (`.venv/`) lives one level above this folder. The three k-means result folders were renamed after the original runs; the default `--out` values inside the older
 scripts still say `dinov2_results/...`, so pass `--out` explicitly (as in the commands below).
 
+Note: `masks_rgb/` and `masks_768/` in the E2-E4 folders hold the **oracle** masks (chosen with the ground truth), not the border-rule predictions.
+
 **Commands**
 
 ```bash
@@ -850,7 +926,7 @@ scripts still say `dinov2_results/...`, so pass `--out` explicitly (as in the co
 .venv/bin/python dinov2_cluster_union.py                               # E2 (about 11 min)
 .venv/bin/python dinov2_cluster_union_stride.py --stride 3  --kmax 6   # E3 (about 30 min)
 .venv/bin/python dinov2_cluster_union_stride.py --stride 14 --kmax 6 \
-        --out dinov2_results/cluster_union_stride14_k6                 # E4 (about 10 min)
+        --out dinov2_results_usod/cluster_union_stride14_k6                 # E4 (about 10 min)
 # quick test of any script: add --limit 10
 
 # SUIM k-means (same scripts, new --gt flag; -min-water-frac only matters for suim_nonwater)
@@ -865,6 +941,9 @@ for S in 14 3; do
   .venv/bin/python dendrogram_code/dinov2_dendro.py --data SUIM/TEST --gts suim_saliency suim_nonwater --tag suim --stride $S
 done
 for G in usod suim_saliency suim_nonwater; do .venv/bin/python dendrogram_code/summarize_dendro.py --gt $G --strides 14 3; done
+
+# Sec. 10.8 statistics and figures (CPU, about 10 s)
+python3 analyze_results.py --export-json
 ```
 
 **Determinism.** `random_state=0` for k-means and silhouette sampling; fixed `numpy` generator (seed 0) for the 5,000-patch subsample. GPU fp16 can still cause
@@ -1317,6 +1396,7 @@ Code: `dendrogram_code/dendro_cluster.py` (trees, cuts, rules, silhouette, metri
 
 | Date | Change |
 |---|---|
-| 2026-10-29 | v1.1: added SUIM (test split, two derived GTs, blank-GT exclusions; Sec. 5.2) and the dendrogram study (Sec. 19: 16 variants x 4 selection rules x strides 14/3 on USOD, SUIM-Saliency, SUIM-not-water, with bootstrap CIs and Wilcoxon tests); updated TL;DR, roadmap, limitations, conclusion, layout, glossary, references |
+| 2026-11-03 | v1.2: renamed the USOD results folder to `dinov2_results_usod/` and updated `analyze_results.py` and all paths; merged the SUIM + dendrogram work (SUIM test split with two derived GTs and blank-GT exclusions, Sec. 5.2; dendrogram study, Sec. 19: 16 variants x 4 selection rules x strides 14/3 on USOD, SUIM-Saliency, SUIM-not-water, with bootstrap CIs and Wilcoxon tests) with the 2026-10-22 analysis work (Sec. 10.8, `docs/ROADMAP.md`); updated TL;DR, roadmap, limitations, conclusion, layout, glossary, references |
+| 2026-10-22 | v1.1: added `analyze_results.py` and Sec. 10.8 (bootstrap CIs, paired tests, failure categories, k\* and object-size analysis, galleries); corrected Sec. 10.6(b) and Sec. 11 failure-mode claims with the new statistics; added `docs/ROADMAP.md` |
 | 2026-10-15 | v1.0: full report rewrite. Added problem statement, motivation, AUV applications, dataset sources, DINOv2 deep-dive, experiment history E0-E4, full results, figures and failure analysis, feasibility timings, roadmap, limitations, reproducibility, glossary, references |
 | earlier | Initial README with the k=2 pipeline and the 2-4 cluster oracle section |

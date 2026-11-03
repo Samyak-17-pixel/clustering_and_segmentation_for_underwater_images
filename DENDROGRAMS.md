@@ -2,6 +2,8 @@
 
 Everything we built with dendrograms (hierarchical clustering) for training-free underwater object segmentation, explained without jargon. Code is in `dendrogram_code/`, results in `dendrogram_results/`.
 
+Full technical write-up with tables, statistics and caveats: [README Sec. 19](README.md#19-dendrogram-hierarchical-clustering-instead-of-k-means).
+
 ---
 
 ## 1. The problem we were solving
