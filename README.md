@@ -1,6 +1,6 @@
 # Training-free underwater object segmentation with DINOv2
 
-**Version 1.0 · last updated 2026-10-15 · dataset used for all numbers: USOD (300 images)**
+**Version 1.1 · last updated 2026-10-29 · datasets: USOD (300 images, Sec. 1-18), SUIM test set (110 images, Sec. 5.2 and 19)**
 
 A study of how far *frozen* DINOv2 features can go in separating "something is there" (foreground object)
 from "just water / background" in underwater images, **without training anything**, as a first perception
@@ -31,7 +31,8 @@ building block for an Autonomous Underwater Vehicle (AUV).
 16. [Reproducibility and environment](#16-reproducibility-and-environment)
 17. [Glossary](#17-glossary)
 18. [References, citations and licenses](#18-references-citations-and-licenses)
-19. [Changelog](#19-changelog)
+19. [Dendrogram (hierarchical) clustering instead of k-means](#19-dendrogram-hierarchical-clustering-instead-of-k-means)
+20. [Changelog](#20-changelog)
 
 ---
 
@@ -61,6 +62,12 @@ building block for an Autonomous Underwater Vehicle (AUV).
      difference ≤ 0.003 on average): the bottleneck is not the feature resolution.
   5. Not yet real time: the deployable path runs at about 2.5 to 6.5 FPS on a desktop RTX A2000 (Sec. 12),
      and was **not** tested on a Jetson or on empty-water frames.
+  6. **New (Sec. 19): replacing k-means by a dendrogram (hierarchical clustering) and choosing the cut with the
+     merge-height gap raises the label-free IoU from 0.52 to 0.65 on USOD** (stride 3, 768-D, average linkage),
+     and from 0.43 to 0.55 on SUIM with the Saliency masks, both clearly beyond sampling noise. The oracle
+     itself does not change much (0.70 to 0.71), so what improves is the *choice* of foreground, which was the
+     weak link. The gain does not carry over to the SUIM "everything except water" labels, and about 20% of the
+     images get worse (Sec. 19.6, 19.8).
 
 ---
 
@@ -80,7 +87,7 @@ ground truth $G\in\{0,1\}^{H\times W}$, measured by IoU, F-measure and MAE (Sec.
 
 | Not this | Why it matters |
 |---|---|
-| Semantic segmentation | No class labels (fish vs. diver vs. wreck). The USOD masks are binary. SUIM, a semantic dataset, is planned for later. |
+| Semantic segmentation | No class labels (fish vs. diver vs. wreck). The USOD masks are binary. SUIM, a semantic dataset, is used here only through two derived binary masks (Sec. 5.2). |
 | Depth / distance estimation | A single image mask says *where in the picture*, not *how far*. |
 | Object detection with boxes or tracks | No instances, no tracking over time. |
 | A trained model | There are no learned weights of ours; only pre-trained DINOv2. |
@@ -165,17 +172,58 @@ wrong (Sec. 11), so the mask should be treated as a *cue* feeding other modules,
 * **Caveat about "salient":** the ground truth marks what annotators considered salient. In `usod_test1` the
   annotators included the reef around the diver as foreground; our features cannot know that convention (Sec. 11).
 
-### 5.2 Planned next: SUIM
+### 5.2 SUIM (second dataset, test split only)
 
-| Item | USOD (used now) | SUIM (planned) |
+SUIM was added on 2026-10-28. Only its **110 test images** were used; nothing was trained and nothing was run on the
+1,525 train/val images.
+
+| Item | USOD | SUIM (test split) |
 |---|---|---|
 | Paper | Islam, Wang, Sattar, SVAM, 2020/2022 | Islam, Edge, Xiao, Luo, Mehtaz, Morse, Enan, Sattar, *Semantic Segmentation of Underwater Imagery: Dataset and Benchmark*, IROS 2020 (arXiv:2004.01241) |
-| Size | 300 test images | 1,525 train/val + 110 test images |
-| Labels | Binary salient object | 8 semantic classes: BW (background waterbody), HD (human divers), PF (plants/sea-grass), WR (wrecks/ruins), RO (robots/instruments), RI (reefs/invertebrates), FV (fish/vertebrates), SR (sea-floor/rocks) |
-| Fits our current method | Directly | Needs adapting: binary "object vs. water" can be derived (everything except BW), and per-class evaluation is possible with a trained head |
+| Size | 300 test images | 1,525 train/val + **110 test images (used)** |
+| Labels | Binary salient object | 8 semantic classes: BW (background waterbody), HD (human divers), PF (plants/sea-grass), WR (wrecks/ruins), RO (robots/instruments), RI (reefs/invertebrates), FV (fish/vertebrates), SR (sea-floor/rocks); plus a separate binary *Saliency* mask |
 | Links | see above | <https://irvlab.cs.umn.edu/resources/suim-dataset> · <https://github.com/IRVLab/SUIM> |
 
-**No number in this README was computed on SUIM.**
+**What the files in `SUIM/TEST/masks/` mean.** Every image has the same file name in several places:
+
+* `masks/<name>.bmp` is the **combined label map**: one colour per class (BW black, HD blue, PF green, WR cyan, RO red,
+  RI magenta, FV yellow, SR white). The colour code is SUIM's documented scheme; the colours seen in the files are consistent with it.
+* `masks/FV/`, `HD/`, `PF/`, `RI/`, `RO/`, `SR/`, `WR/` hold one black/white mask **per class**. A class that is absent from an image
+  gives an all-black file (for example 90 of the 110 `PF` masks and 98 of the 110 `RO` masks are empty), so "blank" files there are normal.
+* `masks/Saliency/` is a separate black/white **salient-object** mask (about 20% of the image on average).
+* There is no folder for water (BW): it is everything the class masks do not cover.
+
+**Two binary ground truths were derived** (`gt_utils.py`, flag `--gt`):
+
+| GT | Definition | Foreground share (mean) | Images used | Role |
+|---|---|---|---|---|
+| `suim_saliency` | the Saliency mask | about 20% | **108** (2 masks are empty: `f_r_1450_`, `f_r_478_`) | **primary**: like USOD, the target is a salient object, so it is the like-for-like comparison |
+| `suim_nonwater` | every pixel that is not BW | about 60% | **92** (see below) | secondary: "anything except open water"; reef and sea-floor count as foreground |
+
+**Images without water.** For 18 of the 110 test images (`d_r_129_`, `d_r_144_`, `f_r_392_`, `f_r_403_`, `f_r_644_`, `f_r_1033_`, `f_r_1319_`, ... full list in
+`excluded_images.txt`) at most 1% of the pixels are water, so the "not water" ground truth is an all-white mask. No file is
+corrupt, the label simply says "everything is foreground". For such images the question "which clusters are foreground?" has no answer, and
+the border rule and the oracle become degenerate, so they are **excluded** from the `suim_nonwater` runs (`--min-water-frac 0.02`; the next
+image has more than 5% water, so the threshold separates them cleanly). Because 15 images have exactly 0% water and 3 have stray pixels only, the
+filter is by water fraction and not by "any black pixel".
+
+**k-means results on SUIM** (mean IoU; same code as Sec. 10, only the data and the GT change; oracle / border rule):
+
+| GT | Setting | 768-D oracle / border | PCA-RGB oracle / border |
+|---|---|---|---|
+| SUIM-Saliency (108) | stride 14, k ≤ 4 | 0.571 / 0.445 | 0.570 / 0.385 |
+| SUIM-Saliency (108) | stride 14, k ≤ 6 | 0.584 / 0.424 | 0.573 / 0.385 |
+| SUIM-Saliency (108) | stride 3, k ≤ 6 | 0.595 / 0.429 | 0.575 / 0.375 |
+| SUIM-not-water (92) | stride 14, k ≤ 4 | 0.757 / 0.502 | 0.773 / 0.504 |
+| SUIM-not-water (92) | stride 14, k ≤ 6 | 0.766 / 0.491 | 0.776 / 0.505 |
+| SUIM-not-water (92) | stride 3, k ≤ 6 | 0.774 / 0.475 | 0.778 / 0.513 |
+
+* **Measured:** SUIM-Saliency is harder than USOD (oracle 0.57-0.60 vs 0.66-0.70; border rule 0.38-0.45 vs 0.45-0.56). The same pattern as on USOD holds: the border rule is far below the oracle, and stride 3 barely helps.
+* **Measured, partly different from USOD:** on SUIM-Saliency raw 768-D still beats PCA-RGB with the border rule (0.42-0.45 vs 0.38), as on USOD. On SUIM-not-water the two feature sets are about equal, PCA-RGB slightly ahead in some settings.
+* **Not comparable with USOD:** the "not water" numbers, because the foreground is much larger and is defined differently.
+* **Unverified:** that SUIM's Saliency masks follow exactly the same annotation convention as USOD's (both come from the same research group).
+* **Reference point:** predicting *everything* as foreground scores IoU 0.224 on USOD, 0.199 on SUIM-Saliency and **0.520 on SUIM-not-water**, so the realistic (border-rule) scores of 0.48-0.51 on SUIM-not-water are close to a trivial guess.
+* No confidence intervals were computed for the k-means SUIM numbers; with 92-108 images, differences of about 0.01 are noise.
 
 ---
 
@@ -712,8 +760,8 @@ embedded device. They are from single runs of a few repetitions on one image and
 | Priority | Improvement | Why / expected benefit | Effort |
 |---|---|---|---|
 | 1 | **Linear probe** (1×1 conv/linear head) on frozen patch features, trained with USOD masks (train/test split) | Removes the foreground-selection problem (the biggest gap: oracle 0.70 vs 0.52) and the clustering cost | Low |
-| 2 | **Run on SUIM** (binary "not water" plus per-class evaluation) | Larger data, semantic labels, a proper train/val/test split | Medium |
-| 3 | **Better label-free foreground selector**: centre prior, cluster size/compactness, saliency, a small learned selector over cluster statistics | Closes part of the oracle-vs-realistic gap without full supervision | Medium |
+| 2 | **Run on SUIM** (binary "not water" plus per-class evaluation) | Larger data, semantic labels, a proper train/val/test split | Medium. **Partly done (Sec. 5.2, 19):** test split only (110 images), two binary GTs; per-class evaluation and the train/val split are still open |
+| 3 | **Better label-free foreground selector**: centre prior, cluster size/compactness, saliency, a small learned selector over cluster statistics | Closes part of the oracle-vs-realistic gap without full supervision | Medium. **Partly done (Sec. 19):** dendrograms plus the merge-height gap rule close about two thirds of the oracle gap on USOD; the size/centre score and border-subtree rules did not help |
 | 4 | **Evaluation that matches the AUV need**: image-level "object ahead" detection, ROI overlap, and **false alarms on empty-water frames** | IoU does not measure what the vehicle needs | Medium |
 | 5 | **DINOv2 with registers** and **ViT-S/L/g** comparison | Cleaner dense features; quantify the speed/accuracy trade-off | Low |
 | 6 | **Edge refinement** (CRF, guided filter, or a lightweight upsampler) | Sharper masks, better on thin objects | Medium |
@@ -721,8 +769,9 @@ embedded device. They are from single runs of a few repetitions on one image and
 | 8 | **Temporal consistency** on video | Stable masks, fewer flickering false alarms | Medium |
 | 9 | **Domain adaptation** (LoRA or last-block fine-tuning) and underwater **image enhancement** pre-processing | Address colour cast, haze and caustics | High |
 | 10 | **Run the SVAM-Net baseline** (checkpoints already in `USOD/checkpoints`) | A fair comparison with a method trained for underwater salient-object detection | Low-Medium |
-| 11 | **Statistical rigour**: multiple seeds, bootstrap confidence intervals, paired tests | Know which differences (e.g. stride 3) are real | Low |
+| 11 | **Statistical rigour**: multiple seeds, bootstrap confidence intervals, paired tests | Know which differences (e.g. stride 3) are real | Low. **Partly done:** bootstrap CIs and Wilcoxon tests for the dendrogram runs (Sec. 19); not for the k-means tables; still a single seed |
 | 12 | **Sonar/DVL/depth fusion** | Range, plus a safety-oriented redundancy | High |
+| 13 | **Minimum-cluster-size guard for the dendrogram gap rule**, and a held-out check of the best variant | The gap rule picks k = 2 on an outlier split in about 20% of images (Sec. 19.8); the best variant was chosen on the same images it is reported on (Sec. 19.10). **Not tried yet** | Low |
 
 (Effort and benefit are my estimates, not measurements.)
 
@@ -731,8 +780,9 @@ embedded device. They are from single runs of a few repetitions on one image and
 ## 14. Limitations, threats to validity and safety note
 
 * **Oracle ≠ performance.** Oracle numbers use ground truth to choose the foreground and are upper bounds.
-* **One dataset, one model, one setting.** 300 test images (all contain objects); only ViT-B/14 at one input size; no cross-dataset validation yet (SUIM planned).
-* **No uncertainty estimates.** Single run, fixed seeds; no confidence intervals or significance tests. Small differences (e.g. stride 3) should not be over-interpreted.
+* **Two datasets, one model, one setting.** 300 USOD images (all contain objects) and 108 / 92 SUIM test images; only ViT-B/14 at one input size. SUIM labels (Saliency or "not water") are derived binary masks, and the SUIM-Saliency convention is not verified to match USOD's.
+* **Little uncertainty information.** Single run, fixed seeds. Only the dendrogram comparison (Sec. 19) has bootstrap confidence intervals and Wilcoxon tests; the k-means tables do not. Small differences (e.g. stride 3) should not be over-interpreted.
+* **Selection on the evaluation data.** In Sec. 19 the best of 64 variant/rule combinations is picked on the same images it is reported on, so its gain over k-means is somewhat optimistic. The same variant wins on USOD and SUIM-Saliency, which is reassuring but is not a held-out test.
 * **Task mismatch.** USOD ground truth = *salient* object as annotated; an AUV needs *obstacles/targets ahead*. These overlap but are not the same.
 * **No distance.** A mask is not a range; the method alone cannot say whether an object is 1 m or 20 m away.
 * **Domain shift untested.** Whether DINOv2's web-image pre-training limits underwater accuracy is not isolated by any experiment here.
@@ -751,6 +801,7 @@ embedded device. They are from single runs of a few repetitions on one image and
   selection is the problem**. A linear probe or a better selector is the most promising next step.
 * **Raw 768-D features beat 3-D PCA-RGB** consistently. **Overlapping windows (stride 3) improve the appearance of the PCA-RGB map but not IoU**, and cost about 17× more
   backbone time (25 passes); allowing more clusters (k≤6) raises the oracle but lowers the realistic score.
+* **Replacing k-means by a dendrogram and cutting at the largest merge-height gap (Sec. 19)** raises the label-free IoU from 0.52 to 0.65 on USOD and from 0.43 to 0.55 on SUIM-Saliency (stride 3, raw 768-D, average linkage), against an oracle of about 0.71 / 0.64. It helps about half of the images and hurts about a fifth; it did not help on SUIM "not water" labels.
 * For AUV use the main gaps are: **real-time operation on embedded hardware** (currently about 2.5 to 6.5 FPS on a desktop GPU), **small/thin objects**, **false alarms on empty water (unmeasured)**
   and **range** (needs sonar/DVL fusion). The next iteration is a trained linear head on SUIM/USOD plus an AUV-relevant evaluation.
 
@@ -765,21 +816,32 @@ Weights: `dinov2_vitb14_pretrain.pth` (330 MB), downloaded by `torch.hub` into `
 **Layout**
 
 ```
-Samyak/
+unsupervised_clustering_for_underwater_images/
 ├── README.md                       # this file
 ├── CLAUDE.md                       # working conventions for the assistant ("(*)" questions: max 50 words)
 ├── dinov2_seg.py                   # E1: PCA mask + k-means (k=2)
 ├── dinov2_cluster_union.py         # E2: k=2..4, PCA-RGB and 768-D, oracle union + border rule
 ├── dinov2_cluster_union_stride.py  # E3/E4: dense (overlapping-window) features, k up to --kmax
+├── gt_utils.py                     # ground-truth loading: --gt usod | suim_saliency | suim_nonwater, blank-GT filter
+├── dendrogram_code/                # Sec. 19: dendro_cluster.py, dinov2_dendro.py, summarize_dendro.py
 ├── USOD/                           # data (never modified)
+├── SUIM/                           # data (TEST/ used; train_val/ not used)
 ├── docs/figures/                   # curated panels used in this README
-├── .venv/                          # Python environment
-└── dinov2_results/
-    ├── panels/ masks_pca/ masks_kmeans/ metrics.csv      # E1
-    ├── cluster_union/                                    # E2 (panels/, masks_rgb/, masks_768/, metrics_union.csv)
-    ├── cluster_union_stride3/                            # E3
-    └── cluster_union_stride14_k6/                        # E4
+├── dinov2_results_usod/            # k-means results on USOD (renamed from dinov2_results/)
+│   ├── panels/ masks_pca/ masks_kmeans/ metrics.csv      # E1
+│   ├── cluster_union_stride14_k4/                        # E2 (panels/, masks_rgb/, masks_768/, metrics_union.csv)
+│   ├── cluster_union_stride3_k6/                         # E3
+│   └── cluster_union_stride14_k6/                        # E4
+├── dinov2_results_suim_saliency/   # same sub-folders, SUIM test, Saliency GT (108 images)
+├── dinov2_results_suim/            # same sub-folders, SUIM test, "not water" GT (92 images)
+└── dendrogram_results/
+    ├── usod/  suim_saliency/  suim_nonwater/   # each: metrics_s14.csv, metrics_s3.csv, summary_s*.md/.csv, stats_s*.csv,
+    │                                           #       compare/, dendrograms/, panels_best/, (excluded_images.txt)
+    └── _cache/                                 # per-image masks of every variant, used to draw panels_best/
 ```
+
+The Python environment (`.venv/`) lives one level above this folder. The three k-means result folders were renamed after the original runs; the default `--out` values inside the older
+scripts still say `dinov2_results/...`, so pass `--out` explicitly (as in the commands below).
 
 **Commands**
 
@@ -790,6 +852,19 @@ Samyak/
 .venv/bin/python dinov2_cluster_union_stride.py --stride 14 --kmax 6 \
         --out dinov2_results/cluster_union_stride14_k6                 # E4 (about 10 min)
 # quick test of any script: add --limit 10
+
+# SUIM k-means (same scripts, new --gt flag; -min-water-frac only matters for suim_nonwater)
+.venv/bin/python dinov2_cluster_union_stride.py --data SUIM/TEST --gt suim_saliency --stride 3 --kmax 6 \
+        --out dinov2_results_suim_saliency/cluster_union_stride3_k6
+.venv/bin/python dinov2_cluster_union_stride.py --data SUIM/TEST --gt suim_nonwater --min-water-frac 0.02 --stride 3 --kmax 6 \
+        --out dinov2_results_suim/cluster_union_stride3_k6
+
+# dendrograms (Sec. 19): about 10 min for stride 14 and about 1 h for stride 3, all three GT sets together
+for S in 14 3; do
+  .venv/bin/python dendrogram_code/dinov2_dendro.py --data USOD --gts usod --stride $S
+  .venv/bin/python dendrogram_code/dinov2_dendro.py --data SUIM/TEST --gts suim_saliency suim_nonwater --tag suim --stride $S
+done
+for G in usod suim_saliency suim_nonwater; do .venv/bin/python dendrogram_code/summarize_dendro.py --gt $G --strides 14 3; done
 ```
 
 **Determinism.** `random_state=0` for k-means and silhouette sampling; fixed `numpy` generator (seed 0) for the 5,000-patch subsample. GPU fp16 can still cause
@@ -828,6 +903,14 @@ oracle IoU ≥ border-rule IoU for all 600 rows of E2; all result tables above w
 | Caustics | Moving bright light patterns caused by waves, common underwater |
 | DVL | Doppler Velocity Log: sensor for vehicle velocity/altitude |
 | Registers | Extra tokens added to ViTs that clean up dense feature maps |
+| Dendrogram | The "family tree" of a hierarchical clustering: every patch starts alone and the closest groups are merged step by step until one group is left |
+| Hierarchical (agglomerative) clustering | Clustering by repeatedly merging the two closest groups; cutting the tree at some height gives k clusters |
+| Linkage | The rule that says how far apart two *groups* are: Ward (variance increase), average, complete (farthest pair) or single (closest pair) |
+| Merge height | The distance at which two groups were merged; tall merges join very different groups |
+| Gap cut | Choosing k where the jump between merge heights is largest (a natural place to cut the tree) |
+| Connectivity-constrained clustering | Hierarchical clustering where only neighbouring patches of the grid may be merged, so clusters stay in one piece |
+| Chaining | Single linkage joining everything through a chain of close neighbours until one huge cluster remains |
+| Saliency mask (SUIM) | SUIM's separate binary salient-object annotation, used as the primary SUIM ground truth |
 
 ---
 
@@ -840,6 +923,9 @@ oracle IoU ≥ border-rule IoU for all 600 rows of E2; all result tables above w
 3. DINOv2 code and weights — <https://github.com/facebookresearch/dinov2>
 4. M. J. Islam, R. Wang, J. Sattar, *SVAM: Saliency-guided Visual Attention Modeling by Autonomous Underwater Robots*, arXiv:2011.06252 (USOD dataset) — <https://arxiv.org/abs/2011.06252> · project page <https://irvlab.cs.umn.edu/visual-attention-modeling/svam>
 5. M. J. Islam, C. Edge, Y. Xiao, P. Luo, M. Mehtaz, C. Morse, S. S. Enan, J. Sattar, *Semantic Segmentation of Underwater Imagery: Dataset and Benchmark*, IROS 2020, arXiv:2004.01241 (SUIM) — <https://arxiv.org/abs/2004.01241> · <https://irvlab.cs.umn.edu/resources/suim-dataset> · <https://github.com/IRVLab/SUIM>
+6. J. H. Ward, *Hierarchical grouping to optimize an objective function*, Journal of the American Statistical Association 58(301), 1963 (Ward linkage)
+7. SciPy hierarchical clustering (`scipy.cluster.hierarchy.linkage`) — <https://docs.scipy.org/doc/scipy/reference/cluster.hierarchy.html>
+8. scikit-learn `AgglomerativeClustering` (with connectivity) — <https://scikit-learn.org/stable/modules/generated/sklearn.cluster.AgglomerativeClustering.html>
 
 **BibTeX**
 
@@ -884,9 +970,353 @@ checking against the publishers' versions, e.g. the RSS 2022 version of SVAM.)
 
 ---
 
-## 19. Changelog
+## 19. Dendrogram (hierarchical) clustering instead of k-means
+
+**Added 2026-10-29.** Everything before this section uses k-means to group the patches. The weak link we found was *choosing which groups are the foreground* (oracle 0.70 vs 0.52
+without labels). This section replaces k-means by **hierarchical clustering** (a *dendrogram*, a family tree of the patches) and tests four ways of reading the foreground
+off the tree. The k-means results are untouched and are used as the baseline everywhere below. All numbers come from `dendrogram_results/*/summary_s*.csv` and `stats_s*.csv`.
+
+### 19.1 The idea in plain words
+
+**k-means** puts *k* "pins" into the feature space. Every patch joins its nearest pin, the pins move to the middle of their patches, and this repeats. You must pick *k* in advance,
+and every *k* is a new run whose clusters need not be related to the previous one.
+
+**A dendrogram** works the other way round, like a party:
+
+1. At the start every patch stands alone (a one-person group).
+2. Find the two **most similar** groups and glue them together. Write down *how far apart* they were (the "merge height").
+3. Repeat until everybody is in one big group. The record of all the gluing steps is the **dendrogram**: a tree whose leaves are the patches. Early merges are low and join near-identical patches; the last merges are tall and join very different things (for example "water" with "reef").
+4. To get *k* clusters, **cut the tree**: undo the last *k − 1* merges. One tree therefore gives every *k* at once, and the clusterings for different *k* are nested (the 4-cluster answer is the 3-cluster answer with one group split).
+
+**A tiny example** (one feature number per patch; water = 1.0, 1.1, 1.2; reef = 3.0, 3.1; fish = 8.0; average linkage, computed with SciPy):
+
+```
+merge   joins                         height
+  1     water 1.0 + water 1.1          0.10
+  2     reef 3.0  + reef 3.1           0.10
+  3     (1.0,1.1) + water 1.2          0.15
+  4     water group + reef group       1.95     <- a "big" merge
+  5     (water+reef) + fish 8.0        6.12     <- a much bigger merge
+
+cut after merge 4 (undo 1 merge)  -> 2 clusters: {fish} | {water, reef}
+cut after merge 3 (undo 2 merges) -> 3 clusters: {fish} | {reef} | {water}
+```
+
+The **gap rule** (Sec. 19.4) looks at the heights from the top (6.12, 1.95, 0.15, ...) and cuts where the biggest jump is: here 6.12 → 1.95, so it picks *k = 2*, "fish versus the rest".
+This also shows the weakness seen later (Sec. 19.8): the gap rule is happy to cut off one odd group, whether that group is the object or just a handful of outlier patches.
+
+### 19.2 What the code does for one image
+
+1. Run frozen DINOv2 once to get one 768-number vector per patch (stride 14: a 32 × 42 grid = 1,344 patches; stride 3: 145 × 192 = 27,840 patches). Also make the 3-number PCA-RGB version (Sec. 8.4).
+2. For each of the **16 variants** (2 feature sets × 4 linkages × 2 tree types, Sec. 19.3), build the tree.
+3. Cut it into *k* = 2, 3, 4, 5, 6 clusters.
+4. Turn the tree into a **foreground mask** with each of **four label-free rules** (Sec. 19.4). The ground truth is not used for this.
+5. Upsample the mask to the picture size (same bilinear step as before) and score it (IoU, F-measure, MAE; Sec. 8.9).
+6. Also compute the **oracle** for each cut: try every foreground/background split of the *k* clusters, keep the best one using the ground truth. This is the upper bound (what a perfect selector could reach from these clusters).
+
+The backbone runs only once per image and is shared by all variants, which keeps the whole study to about 1.2 hours.
+
+### 19.3 The knobs
+
+| Knob | Options | Plain meaning |
+|---|---|---|
+| Features | raw 768-D, 3-D PCA-RGB | what is compared between patches (same two sets as before) |
+| Linkage | **Ward**, **average**, **complete**, **single** | how to measure the distance between two *groups*. *Ward*: merge the pair that increases the total spread the least (closest to k-means). *Average*: mean distance over all pairs of patches, one from each group. *Complete*: distance of the **farthest** pair, so groups stay compact. *Single*: distance of the **closest** pair, so groups can stretch into long chains. |
+| Patch distance | Euclidean for Ward and for PCA-RGB; **cosine** for average/complete/single on 768-D | cosine compares the direction of two feature vectors, which is how DINOv2 features are normally compared |
+| Tree type | **free**, **constrained** | *free*: any two patches may be merged. *Constrained*: only **neighbouring** grid cells may be merged, so every cluster is one connected region. |
+| Stride | 14, 3 | as in Sec. 8.8 |
+
+Two practical details. (a) A free tree needs all pairwise distances, which is too big for the 27,840 patches of stride 3. For those I build the tree on a **random sample of 3,000 patches**
+and give every other patch the label of its **nearest sampled patch** (in feature space). Stride 14 (1,344 patches) uses all patches. Constrained trees (scikit-learn, grid neighbours) always use all patches.
+(b) The constrained trees from scikit-learn can have merge heights that are not always increasing, which breaks SciPy's `cut_tree`; I wrote my own cut ("undo the last k − 1 merges in the order they were made").
+I checked that the cuts are nested and that constrained clusters are connected.
+
+### 19.4 The four label-free ways to pick the foreground
+
+All four only use the picture: no ground truth. **Border ring** below means the outer strip of patches (1 patch wide at stride 14, 5 at stride 3). The foreground object usually does not touch the border, the water usually does.
+
+| Rule (name in the CSVs) | In simple words |
+|---|---|
+| **Silhouette cut + border rule** (`sil_border`) | The k-means recipe on a tree: try k = 2 … 6, keep the k whose clusters are best separated (silhouette score, Sec. 8.6), cut there, and call a cluster *foreground* if a smaller share of its patches lies in the border ring than the ring's share of the whole image (Sec. 8.3). |
+| **Gap cut + border rule** (`gap_border`) | Same border rule, but k is chosen by the **tree itself**: cut where the jump between consecutive merge heights is biggest (Sec. 19.1). No silhouette score needed. |
+| **Border-touching subtrees** (`subtree`) | Walk the tree from the top. A branch with (almost) no border patches (less than half the image's border share) is foreground as a whole; a branch with a lot of border (more than 1.5 × the image's share) is water as a whole; a mixed branch is split into its two children. Tiny branches (< 2% of the patches) are decided by the plain border test. |
+| **Size / compactness / centre score** (`score`) | Give every branch of the tree a score = 0.35 × "stays away from the border" + 0.25 × "near the image centre" + 0.20 × "compact (fills its bounding box)" + 0.20 × "plausible size" (full marks for 5-50% of the image, zero below 1% or above 90%). Branches under 2% of the patches are ignored. Take the best branch plus any non-overlapping branch scoring at least 90% of the best. |
+
+The thresholds and weights above were **fixed in advance and never tuned on the ground truth**. If a rule produces an empty or all-foreground mask, it falls back to the two-cluster cut and takes the cluster with the smaller border share.
+
+**Oracle** (not a method, an upper bound): for the clusters of one cut, the best foreground/background split chosen **using** the ground truth. Reported at the silhouette k (`oracle_sil`).
+
+### 19.5 Experimental setup
+
+* **Three ground-truth sets** (Sec. 5.2): USOD (300 images); **SUIM-Saliency** (108 images, the primary SUIM result because USOD is also a salient-object task); **SUIM-not-water** (92 images, "everything except open water").
+* **Strides** 14 and 3, *k* from 2 to 6, both feature sets, all 16 variants and all 4 rules: 176 result rows per image (`metrics_s14.csv`, `metrics_s3.csv`).
+* **Baseline:** the k-means runs on exactly the same images (E3/E4 settings: k ≤ 6, border rule, same stride). A paired comparison is made per image.
+* **Statistics:** mean IoU, plus the **mean per-image gain over k-means with a 95% bootstrap interval** (2,000 resamples of the images) and a **Wilcoxon signed-rank test**.
+* **Trivial baseline for reference:** predicting *everything* as foreground scores IoU = (share of foreground). That is **0.224** on USOD, **0.199** on SUIM-Saliency, but **0.520** on SUIM-not-water, where most of the picture is foreground.
+
+### 19.6 Results
+
+**Headline: best label-free variant per dataset and stride, against the k-means border rule** (*better / worse / tie = images where the dendrogram IoU is more than 0.02 higher / lower / within 0.02 of k-means; "Oracle" is the best-possible IoU from the same clusters).
+
+| Dataset | Stride | Best label-free variant | Dendrogram IoU | k-means border rule | Gain (95% CI) | Wilcoxon p | Images better / worse / tie* | Oracle: same tree vs k-means |
+|---|---|---|---|---|---|---|---|---|
+| USOD (300 images) | 14 | 768-D, free tree, average linkage, gap cut | **0.646** | 0.531 | +0.115 (+0.085, +0.145) | 9.1e-12 | 51% / 22% / 27% | 0.709 vs 0.703 |
+| USOD (300 images) | 3 | 768-D, free tree, average linkage, gap cut | **0.646** | 0.523 | +0.123 (+0.095, +0.151) | 4.7e-14 | 52% / 20% / 28% | 0.711 vs 0.702 |
+| SUIM-Saliency (108 images) | 14 | 768-D, free tree, average linkage, gap cut | **0.537** | 0.424 | +0.113 (+0.074, +0.155) | 1.2e-05 | 50% / 20% / 30% | 0.626 vs 0.584 |
+| SUIM-Saliency (108 images) | 3 | 768-D, free tree, average linkage, gap cut | **0.552** | 0.429 | +0.122 (+0.084, +0.163) | 1.2e-06 | 53% / 19% / 29% | 0.642 vs 0.595 |
+| SUIM-not-water (92 images) | 14 | PCA-RGB, free tree, average linkage, gap cut | **0.548** | 0.505 | +0.043 (+0.008, +0.080) | 0.06 | 37% / 22% / 41% | 0.770 vs 0.776 |
+| SUIM-not-water (92 images) | 3 | 768-D, free tree, single linkage, gap cut | **0.521** | 0.475 | +0.046 (-0.009, +0.097) | 0.07 | 57% / 35% / 9% | 0.521 vs 0.774 |
+
+(The best variant is picked on the same images it is reported on, so the gain is somewhat optimistic; see Sec. 19.10.)
+
+**Measured findings**
+
+1. **On USOD and SUIM-Saliency one variant wins everywhere: free tree, raw 768-D, average linkage, gap cut.** It improves the label-free IoU by about **+0.11 to +0.12** over k-means (0.52 → 0.65 on USOD, 0.43 → 0.55 on SUIM-Saliency at stride 3). The confidence intervals stay well above zero (for example +0.095 to +0.151 on USOD, stride 3).
+2. **The oracle moves much less than the realistic score** (USOD 0.711 vs 0.702, SUIM-Saliency 0.642 vs 0.595, i.e. +0.01 and +0.05, against +0.12 for the realistic IoU). The *clusters* are about as good as before; what improved is the *choice* of which ones are foreground. On USOD this closes about two thirds of the oracle gap (0.52 → 0.65, against 0.70).
+3. **It is not a uniform win.** On USOD the best variant is better on 52% of the images and worse on 20% (stride 3); on SUIM-Saliency 53% / 19%. The average gain comes from large wins on images where the k-means border rule picked the wrong cluster (for example `usod_test205`: 0.11 → 0.84, `usod_test53`: 0.07 → 0.78, `usod_test2`: 0.10 → 0.72), against a smaller number of large losses (Sec. 19.8).
+4. **Stride 3 changes almost nothing** (USOD 0.646 at both strides, SUIM-Saliency 0.537 → 0.552), as it did for k-means.
+5. **Silhouette cut vs gap cut.** For the winning tree the gap cut is a little better than the silhouette cut (USOD 0.646 vs 0.630, SUIM-Saliency 0.552 vs 0.519 at stride 3). I did not test that difference separately, so treat it as small. For USOD the two rules pick k = 2 in about half of the images (gap 50%, silhouette 52%; mean k 2.9 vs 3.2).
+6. **Other linkages** are weaker. Raw 768-D, free tree, silhouette cut, stride 3, USOD: average 0.630, Ward 0.571, complete 0.568, **single 0.211**. Constrained Ward (0.603) is better than free Ward and is the best of the constrained trees.
+7. **The two extra tree rules are mostly not better than the border rule.** The subtree rule gives 0.28-0.39 on USOD for every variant (k-means 0.52). The size/centre score rule is poor on raw 768-D (0.31-0.51) but **with PCA-RGB and a free Ward tree it reaches 0.548 on USOD (+0.081 over k-means PCA-RGB, CI +0.050 to +0.111)**; on SUIM-Saliency that gain is not significant (+0.032, CI −0.017 to +0.081).
+8. **SUIM-not-water: no meaningful gain.** The best variants gain +0.04 to +0.05 (p = 0.06 and 0.07; the stride-3 interval includes zero), and the winner changes between strides. More importantly, **predicting all-foreground already scores 0.520 here**, the same as the "best" stride-3 variant (single linkage, which collapses to one giant cluster, Sec. 19.7), and k-means scores 0.475-0.513. So the realistic SUIM-not-water scores are close to a trivial guess and say little about skill. The per-image picture depends on the variant: the winners are better on 37-57% and worse on 22-35% of the images, far from the 50% / 20% seen on the other two sets.
+
+**Full tables** (mean IoU over images; every one of the 16 variants; the k-means numbers are in the line above each table). Stride 3 first, then stride 14.
+
+<details>
+<summary>USOD, stride 3</summary>
+
+*USOD (300 images), stride 3.* k-means on the same images (k ≤ 6): raw 768-D border rule **0.523**, oracle 0.702; PCA-RGB border rule **0.467**, oracle 0.671. Bold = best value in that column and feature set.
+
+| Features | Tree | Linkage | Silhouette cut + border rule | Gap cut + border rule | Border-subtree rule | Size/centre score rule | Oracle (best union at silhouette k) |
+|---|---|---|---|---|---|---|---|
+| raw 768-D | free | ward | 0.571 | 0.544 | **0.390** | 0.494 | **0.716** |
+| raw 768-D | free | average | **0.630** | **0.646** | 0.382 | **0.499** | 0.711 |
+| raw 768-D | free | complete | 0.568 | 0.527 | 0.373 | 0.497 | 0.676 |
+| raw 768-D | free | single | 0.211 | 0.224 | 0.322 | 0.387 | 0.224 |
+| raw 768-D | constrained | ward | 0.603 | 0.577 | 0.389 | 0.467 | 0.705 |
+| raw 768-D | constrained | average | 0.072 | 0.085 | 0.309 | 0.358 | 0.224 |
+| raw 768-D | constrained | complete | 0.178 | 0.194 | 0.290 | 0.308 | 0.256 |
+| raw 768-D | constrained | single | 0.093 | 0.090 | 0.282 | 0.371 | 0.224 |
+| PCA-RGB | free | ward | 0.491 | 0.504 | **0.392** | **0.548** | **0.680** |
+| PCA-RGB | free | average | 0.500 | 0.538 | 0.391 | 0.546 | 0.675 |
+| PCA-RGB | free | complete | 0.450 | 0.437 | 0.380 | 0.545 | 0.653 |
+| PCA-RGB | free | single | 0.055 | 0.057 | 0.361 | 0.540 | 0.228 |
+| PCA-RGB | constrained | ward | **0.576** | **0.566** | 0.392 | 0.492 | 0.661 |
+| PCA-RGB | constrained | average | 0.075 | 0.050 | 0.322 | 0.455 | 0.244 |
+| PCA-RGB | constrained | complete | 0.202 | 0.211 | 0.305 | 0.424 | 0.288 |
+| PCA-RGB | constrained | single | 0.022 | 0.022 | 0.298 | 0.463 | 0.224 |
+
+</details>
+
+<details>
+<summary>USOD, stride 14</summary>
+
+*USOD (300 images), stride 14.* k-means on the same images (k ≤ 6): raw 768-D border rule **0.531**, oracle 0.703; PCA-RGB border rule **0.448**, oracle 0.668. Bold = best value in that column and feature set.
+
+| Features | Tree | Linkage | Silhouette cut + border rule | Gap cut + border rule | Border-subtree rule | Size/centre score rule | Oracle (best union at silhouette k) |
+|---|---|---|---|---|---|---|---|
+| raw 768-D | free | ward | 0.560 | 0.541 | 0.382 | **0.513** | **0.712** |
+| raw 768-D | free | average | **0.625** | **0.646** | 0.375 | 0.503 | 0.709 |
+| raw 768-D | free | complete | 0.572 | 0.540 | 0.366 | 0.488 | 0.676 |
+| raw 768-D | free | single | 0.202 | 0.219 | 0.313 | 0.436 | 0.225 |
+| raw 768-D | constrained | ward | 0.596 | 0.557 | **0.384** | 0.449 | 0.692 |
+| raw 768-D | constrained | average | 0.167 | 0.147 | 0.342 | 0.437 | 0.327 |
+| raw 768-D | constrained | complete | 0.346 | 0.330 | 0.334 | 0.408 | 0.420 |
+| raw 768-D | constrained | single | 0.049 | 0.057 | 0.314 | 0.397 | 0.224 |
+| PCA-RGB | free | ward | 0.471 | 0.485 | **0.389** | 0.539 | 0.676 |
+| PCA-RGB | free | average | 0.490 | 0.527 | 0.386 | 0.544 | **0.679** |
+| PCA-RGB | free | complete | 0.438 | 0.425 | 0.372 | 0.538 | 0.661 |
+| PCA-RGB | free | single | 0.073 | 0.070 | 0.356 | **0.546** | 0.256 |
+| PCA-RGB | constrained | ward | **0.552** | **0.545** | 0.381 | 0.480 | 0.646 |
+| PCA-RGB | constrained | average | 0.194 | 0.138 | 0.343 | 0.478 | 0.335 |
+| PCA-RGB | constrained | complete | 0.331 | 0.328 | 0.334 | 0.463 | 0.391 |
+| PCA-RGB | constrained | single | 0.030 | 0.046 | 0.313 | 0.471 | 0.226 |
+
+</details>
+
+<details>
+<summary>SUIM-Saliency, stride 3</summary>
+
+*SUIM-Saliency (108 images), stride 3.* k-means on the same images (k ≤ 6): raw 768-D border rule **0.429**, oracle 0.595; PCA-RGB border rule **0.375**, oracle 0.575. Bold = best value in that column and feature set.
+
+| Features | Tree | Linkage | Silhouette cut + border rule | Gap cut + border rule | Border-subtree rule | Size/centre score rule | Oracle (best union at silhouette k) |
+|---|---|---|---|---|---|---|---|
+| raw 768-D | free | ward | 0.475 | 0.417 | 0.313 | **0.398** | 0.612 |
+| raw 768-D | free | average | **0.519** | **0.552** | 0.314 | 0.395 | **0.642** |
+| raw 768-D | free | complete | 0.448 | 0.428 | 0.298 | 0.383 | 0.577 |
+| raw 768-D | free | single | 0.198 | 0.200 | 0.256 | 0.299 | 0.200 |
+| raw 768-D | constrained | ward | 0.483 | 0.435 | **0.315** | 0.347 | 0.564 |
+| raw 768-D | constrained | average | 0.059 | 0.057 | 0.249 | 0.257 | 0.199 |
+| raw 768-D | constrained | complete | 0.129 | 0.156 | 0.234 | 0.226 | 0.219 |
+| raw 768-D | constrained | single | 0.096 | 0.084 | 0.234 | 0.275 | 0.199 |
+| PCA-RGB | free | ward | 0.402 | 0.402 | 0.318 | 0.407 | **0.591** |
+| PCA-RGB | free | average | 0.378 | 0.398 | 0.316 | 0.413 | 0.570 |
+| PCA-RGB | free | complete | 0.360 | 0.352 | 0.312 | **0.434** | 0.557 |
+| PCA-RGB | free | single | 0.052 | 0.072 | 0.296 | 0.409 | 0.199 |
+| PCA-RGB | constrained | ward | **0.431** | **0.422** | **0.319** | 0.372 | 0.520 |
+| PCA-RGB | constrained | average | 0.062 | 0.050 | 0.259 | 0.347 | 0.215 |
+| PCA-RGB | constrained | complete | 0.165 | 0.172 | 0.254 | 0.316 | 0.257 |
+| PCA-RGB | constrained | single | 0.025 | 0.023 | 0.251 | 0.352 | 0.199 |
+
+</details>
+
+<details>
+<summary>SUIM-Saliency, stride 14</summary>
+
+*SUIM-Saliency (108 images), stride 14.* k-means on the same images (k ≤ 6): raw 768-D border rule **0.424**, oracle 0.584; PCA-RGB border rule **0.385**, oracle 0.573. Bold = best value in that column and feature set.
+
+| Features | Tree | Linkage | Silhouette cut + border rule | Gap cut + border rule | Border-subtree rule | Size/centre score rule | Oracle (best union at silhouette k) |
+|---|---|---|---|---|---|---|---|
+| raw 768-D | free | ward | 0.432 | 0.416 | **0.309** | 0.377 | 0.607 |
+| raw 768-D | free | average | 0.472 | **0.537** | 0.303 | 0.383 | **0.626** |
+| raw 768-D | free | complete | 0.450 | 0.445 | 0.304 | **0.384** | 0.593 |
+| raw 768-D | free | single | 0.190 | 0.192 | 0.261 | 0.332 | 0.203 |
+| raw 768-D | constrained | ward | **0.475** | 0.435 | 0.308 | 0.331 | 0.556 |
+| raw 768-D | constrained | average | 0.109 | 0.092 | 0.267 | 0.324 | 0.245 |
+| raw 768-D | constrained | complete | 0.283 | 0.261 | 0.265 | 0.295 | 0.366 |
+| raw 768-D | constrained | single | 0.051 | 0.059 | 0.246 | 0.263 | 0.199 |
+| PCA-RGB | free | ward | 0.395 | 0.369 | **0.318** | 0.412 | 0.567 |
+| PCA-RGB | free | average | 0.392 | **0.409** | 0.311 | 0.403 | **0.580** |
+| PCA-RGB | free | complete | 0.355 | 0.345 | 0.301 | 0.400 | 0.561 |
+| PCA-RGB | free | single | 0.055 | 0.058 | 0.291 | **0.424** | 0.216 |
+| PCA-RGB | constrained | ward | **0.414** | 0.399 | 0.313 | 0.343 | 0.505 |
+| PCA-RGB | constrained | average | 0.149 | 0.133 | 0.269 | 0.362 | 0.280 |
+| PCA-RGB | constrained | complete | 0.234 | 0.222 | 0.268 | 0.351 | 0.322 |
+| PCA-RGB | constrained | single | 0.026 | 0.036 | 0.253 | 0.347 | 0.199 |
+
+</details>
+
+<details>
+<summary>SUIM-not-water, stride 3</summary>
+
+*SUIM-not-water (92 images), stride 3.* k-means on the same images (k ≤ 6): raw 768-D border rule **0.475**, oracle 0.774; PCA-RGB border rule **0.513**, oracle 0.778. Bold = best value in that column and feature set.
+
+| Features | Tree | Linkage | Silhouette cut + border rule | Gap cut + border rule | Border-subtree rule | Size/centre score rule | Oracle (best union at silhouette k) |
+|---|---|---|---|---|---|---|---|
+| raw 768-D | free | ward | 0.486 | 0.491 | 0.450 | **0.278** | 0.745 |
+| raw 768-D | free | average | 0.433 | 0.442 | 0.472 | 0.272 | 0.733 |
+| raw 768-D | free | complete | 0.465 | 0.489 | 0.452 | 0.252 | 0.711 |
+| raw 768-D | free | single | **0.508** | **0.521** | **0.487** | 0.228 | 0.521 |
+| raw 768-D | constrained | ward | 0.461 | 0.472 | 0.433 | 0.270 | **0.761** |
+| raw 768-D | constrained | average | 0.201 | 0.202 | 0.446 | 0.233 | 0.520 |
+| raw 768-D | constrained | complete | 0.252 | 0.376 | 0.399 | 0.206 | 0.517 |
+| raw 768-D | constrained | single | 0.283 | 0.236 | 0.467 | 0.236 | 0.520 |
+| PCA-RGB | free | ward | 0.485 | 0.478 | 0.448 | 0.290 | **0.772** |
+| PCA-RGB | free | average | **0.515** | **0.493** | 0.459 | 0.285 | 0.771 |
+| PCA-RGB | free | complete | 0.488 | 0.475 | 0.465 | 0.310 | 0.761 |
+| PCA-RGB | free | single | 0.128 | 0.168 | **0.493** | **0.320** | 0.520 |
+| PCA-RGB | constrained | ward | 0.453 | 0.446 | 0.437 | 0.272 | 0.756 |
+| PCA-RGB | constrained | average | 0.119 | 0.110 | 0.458 | 0.258 | 0.515 |
+| PCA-RGB | constrained | complete | 0.308 | 0.323 | 0.428 | 0.235 | 0.494 |
+| PCA-RGB | constrained | single | 0.044 | 0.043 | 0.473 | 0.246 | 0.520 |
+
+</details>
+
+<details>
+<summary>SUIM-not-water, stride 14</summary>
+
+*SUIM-not-water (92 images), stride 14.* k-means on the same images (k ≤ 6): raw 768-D border rule **0.491**, oracle 0.766; PCA-RGB border rule **0.505**, oracle 0.776. Bold = best value in that column and feature set.
+
+| Features | Tree | Linkage | Silhouette cut + border rule | Gap cut + border rule | Border-subtree rule | Size/centre score rule | Oracle (best union at silhouette k) |
+|---|---|---|---|---|---|---|---|
+| raw 768-D | free | ward | **0.505** | **0.524** | 0.452 | 0.274 | **0.747** |
+| raw 768-D | free | average | 0.458 | 0.467 | 0.473 | 0.273 | 0.733 |
+| raw 768-D | free | complete | 0.495 | 0.492 | 0.472 | 0.266 | 0.720 |
+| raw 768-D | free | single | 0.480 | 0.492 | **0.500** | 0.249 | 0.521 |
+| raw 768-D | constrained | ward | 0.467 | 0.462 | 0.432 | **0.280** | 0.746 |
+| raw 768-D | constrained | average | 0.128 | 0.132 | 0.452 | 0.256 | 0.535 |
+| raw 768-D | constrained | complete | 0.268 | 0.310 | 0.426 | 0.233 | 0.527 |
+| raw 768-D | constrained | single | 0.097 | 0.121 | 0.462 | 0.236 | 0.520 |
+| PCA-RGB | free | ward | **0.537** | 0.514 | 0.477 | 0.322 | 0.767 |
+| PCA-RGB | free | average | 0.534 | **0.548** | 0.478 | **0.322** | **0.770** |
+| PCA-RGB | free | complete | 0.511 | 0.508 | 0.472 | 0.303 | 0.767 |
+| PCA-RGB | free | single | 0.103 | 0.135 | **0.512** | 0.321 | 0.533 |
+| PCA-RGB | constrained | ward | 0.453 | 0.456 | 0.449 | 0.256 | 0.746 |
+| PCA-RGB | constrained | average | 0.186 | 0.175 | 0.471 | 0.278 | 0.515 |
+| PCA-RGB | constrained | complete | 0.300 | 0.275 | 0.453 | 0.279 | 0.521 |
+| PCA-RGB | constrained | single | 0.058 | 0.102 | 0.478 | 0.262 | 0.520 |
+
+</details>
+
+
+### 19.7 Why the results look like this
+
+*(Measured = visible in the tables above. Interpretation = my explanation, consistent with the numbers and figures but not proven by a dedicated experiment.)*
+
+* **Why average linkage on 768-D works best.** *Interpretation:* average linkage compares groups by the typical distance between their members, so a large, uniform region (open water, or one object) ends up as a big group, and a few odd patches become small separate groups. The upper part of the tree then tends to describe the large structures of the scene (water versus object versus reef), which is the part the border rule needs. Ward is close to k-means (it minimises spread), so it behaves like k-means, and the measured gain over k-means is small (+0.03 to +0.05).
+* **Why single linkage fails.** *Measured:* with the border-rule cuts its IoU is only 0.02-0.22, and its oracle (best possible choice using the ground truth) is only about **0.22-0.26 on USOD, 0.20-0.22 on SUIM-Saliency and 0.52-0.53 on SUIM-not-water**, which is the all-foreground score (0.224 / 0.199 / 0.520, Sec. 19.5). The tree-walking rules can still give a usable mask on single-linkage trees (up to 0.55 on USOD with PCA-RGB), because they do not depend on the top cuts. *Interpretation:* single linkage joins two groups as soon as their *closest* pair is close, so one long chain of similar patches swallows nearly everything into one giant cluster; the other clusters are specks. Cutting at k ≤ 6 then cannot isolate the object, whatever rule is used.
+* **Why constrained average/complete/single fail but constrained Ward works.** *Measured:* constrained average, complete and single have oracles of only 0.22-0.42 on USOD, whereas constrained Ward reaches 0.65-0.71. *Interpretation:* when only neighbours can be merged, these three linkages grow regions by absorbing neighbours one at a time, so the top of the tree is dominated by one large region and a few small ones; Ward's "keep the spread small" criterion keeps balanced regions. The constrained trees do give connected regions without speckle, but not better IoU than the free average tree.
+* **Why the subtree and score rules are weak.** *Interpretation:* they make many small local decisions (a branch is foreground or water), and each wrong decision leaves speckles; the figures show many small white and black dots. The constants are guesses and were not tuned. The score rule works with PCA-RGB, where "compact and central" blobs are simpler, but not with 768-D.
+* **Why the improvement does not appear on SUIM-not-water.** *Interpretation:* the border rule and gap cut assume the foreground is an object that does not touch the picture border. In "not water" labels the reef or sea-floor often covers the whole border and most of the picture, so the assumption fails, and the trivial all-foreground guess (0.52) is already hard to beat. The oracle is high (0.77), so the clusters are fine; the selection rule is the limit.
+
+### 19.8 A failure case: `usod_test40` (and `usod_test33`)
+
+For the nudibranch in `usod_test40` the winning variant gets **0.21** while k-means gets 0.84. Numbers for this image (free tree, 768-D, average linkage, stride 3):
+
+| Rule | k used | IoU |
+|---|---|---|
+| Silhouette cut + border rule | 4 | 0.83 |
+| Gap cut + border rule | **2** | **0.21** |
+| Oracle at k = 2 | 2 | 0.21 |
+| Oracle at k = 3, 4, 5 or 6 | 3-6 | 0.85 |
+| Size/centre score rule | - | 0.85 |
+
+**What happens (measured):** the gap rule picks k = 2, and for this image *no* foreground choice from the two clusters of that cut is any good (even the oracle gets only 0.21). From k = 3 on, the object is cleanly separated (0.85). **Why (interpretation, consistent with the mask, which is white everywhere except a few specks):** the very top split of the average-linkage tree peels off a handful of outlier patches from the rest, and the merge heights make that look like the biggest "gap", so the gap rule cuts exactly there. The border rule then calls the huge remaining cluster foreground, so nearly the whole image is predicted as object. `usod_test33` shows the same picture and the same numbers (0.87 → 0.21); I did not check whether the two files are duplicates.
+
+**Probable fix, not tried:** ignore splits that leave a cluster smaller than a few percent of the patches when looking for the gap, so a tiny outlier group cannot win. This should rescue many of the roughly 20% of images that got worse (roadmap item 13).
+
+### 19.9 Figures
+
+Four pictures from `dendrogram_results/` (the full sets are in `compare/`, `dendrograms/` and `panels_best/` of each dataset folder).
+
+![All variants side by side](docs/figures/dendro_compare_usod_test153.png)
+
+*All variants on `usod_test153`, raw 768-D, stride 14. Left: picture, ground truth, k-means with border rule. Then 8 columns (free and constrained trees × 4 linkages) and 4 rows (the four rules), each with its IoU. Average, Ward and complete linkage give clean masks; single linkage is nearly blank; the subtree rule (third row) is speckled.*
+
+![Truncated dendrograms](docs/figures/dendro_trees_usod_test153.png)
+
+*The trees behind that picture (truncated to the 25 top branches). The red line is the cut chosen by the silhouette, the green dashed line the cut chosen by the gap rule. The constrained single-linkage tree is a staircase: that is chaining.*
+
+![A big win](docs/figures/dendro_win_usod_test205.png)
+
+*A big win (`usod_test205`, 0.11 with the k-means border rule → 0.84). Panels: picture, ground truth, best dendrogram variant (stride 3, 768-D, free, average, gap cut), **k-means oracle best union** (chosen using the ground truth, so it looks similar; the realistic k-means mask is in the `compare/` figures).*
+
+![A big loss](docs/figures/dendro_loss_usod_test40.png)
+
+*A big loss (`usod_test40`, 0.84 → 0.21), explained in Sec. 19.8: the dendrogram mask is almost entirely white.*
+
+### 19.10 Honest limitations
+
+* **Best-of-64 on the evaluation images.** The best variant is chosen among 16 variants × 4 rules on the same images it is reported on, so its gain over k-means is somewhat optimistic. The same variant wins on USOD and SUIM-Saliency (a good sign), but there is no held-out test and a single run (no random seeds to vary; the sample of 3,000 patches uses a fixed seed).
+* **Only 108 / 92 SUIM images**, and SUIM-Saliency is not verified to follow USOD's annotation convention (Sec. 5.2).
+* **SUIM-not-water is close to a trivial guess** (all-foreground = 0.520), so it cannot support a claim either way.
+* **k limited to 2-6**, as in the best k-means runs. The oracle would rise with more clusters, but the realistic scores might not.
+* **The tree-walking rules use fixed, untuned constants.** Their weakness may be a design problem, not a limit of the idea.
+* **Silhouette vs gap cut** was not tested separately (Sec. 19.6, finding 5).
+* **Failure rate is real:** about one image in five gets clearly worse than with k-means (Sec. 19.8). Nothing here was tested on empty-water frames or on video.
+* **Explanations in Sec. 19.7 marked "interpretation"** have not been verified by dedicated experiments (for example by inspecting cluster sizes of single-linkage trees).
+
+### 19.11 How to reproduce
+
+```bash
+for S in 14 3; do
+  .venv/bin/python dendrogram_code/dinov2_dendro.py --data USOD --gts usod --stride $S
+  .venv/bin/python dendrogram_code/dinov2_dendro.py --data SUIM/TEST --gts suim_saliency suim_nonwater --tag suim --stride $S
+done
+for G in usod suim_saliency suim_nonwater; do .venv/bin/python dendrogram_code/summarize_dendro.py --gt $G --strides 14 3; done
+# quick test: add --limit 5 --sample 5 --out-root /some/scratch/dir to dinov2_dendro.py
+```
+
+Measured run time (RTX A2000, file timestamps of the run): stride 14 took about 10 minutes (USOD 6.4, SUIM 3.6) and stride 3 about 62 minutes (USOD 44, SUIM 18), 73 minutes in total including the summaries; this covers all 16 variants and 4 rules.
+Code: `dendrogram_code/dendro_cluster.py` (trees, cuts, rules, silhouette, metrics), `dendrogram_code/dinov2_dendro.py` (per-image driver, comparison figures, dendrogram plots), `dendrogram_code/summarize_dendro.py`
+(tables, bootstrap and Wilcoxon statistics, best-variant panels). Results: `dendrogram_results/<dataset>/` (Sec. 16).
+
+---
+
+## 20. Changelog
 
 | Date | Change |
 |---|---|
+| 2026-10-29 | v1.1: added SUIM (test split, two derived GTs, blank-GT exclusions; Sec. 5.2) and the dendrogram study (Sec. 19: 16 variants x 4 selection rules x strides 14/3 on USOD, SUIM-Saliency, SUIM-not-water, with bootstrap CIs and Wilcoxon tests); updated TL;DR, roadmap, limitations, conclusion, layout, glossary, references |
 | 2026-10-15 | v1.0: full report rewrite. Added problem statement, motivation, AUV applications, dataset sources, DINOv2 deep-dive, experiment history E0-E4, full results, figures and failure analysis, feasibility timings, roadmap, limitations, reproducibility, glossary, references |
 | earlier | Initial README with the k=2 pipeline and the 2-4 cluster oracle section |
