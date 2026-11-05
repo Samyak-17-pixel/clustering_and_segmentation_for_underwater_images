@@ -1,7 +1,7 @@
 """Quantitative and visual summary of the existing DINOv2 clustering results (CPU only, no model needed).
 
 Reads results/kmeans/usod/metrics.csv (E1) and results/kmeans/usod/*/metrics_union.csv (E2-E4) plus the USOD ground-truth
-masks, and writes figures to docs/figures/analysis/ and tables to results/analysis/.
+masks, and writes figures to results/doc_figure_sources/analysis/ and tables to results/analysis/.
 """
 import argparse
 import json
@@ -419,7 +419,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--results", default=ROOT / "results" / "kmeans" / "usod")
     ap.add_argument("--data", default=ROOT / "data" / "USOD")
-    ap.add_argument("--fig-out", default=ROOT / "docs" / "figures" / "analysis")
+    ap.add_argument("--fig-out", default=ROOT / "results" / "doc_figure_sources" / "analysis")
     ap.add_argument("--export-json", action="store_true", help="also write analysis/summary.json for dashboards")
     args = ap.parse_args()
 
