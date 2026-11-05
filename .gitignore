@@ -1,16 +1,32 @@
-# Large dataset files (exceed GitHub limits / not redistributable)
-data/USOD/eval_data.zip
-data/USOD/checkpoints/*.h5
-data/SUIM/
+# Only code and methodology are versioned (README.md, results.md, docs/, src/, build scripts).
+# Datasets, results, caches, models, videos and decks stay on the local disk.
 
-# Python and logs
+# datasets and raw footage (see data/README.md for how to obtain / rebuild them)
+data/*
+!data/README.md
+videos/
+
+# everything the scripts produce
+results/
+outputs/
+
+# presentations: keep only the build scripts
+presentations/*
+!presentations/build_deck.py
+!presentations/build_deck_review3.py
+!presentations/build_figures.py
+!presentations/build_figures_review3.py
+
+# python, logs, media, office files
 __pycache__/
 *.pyc
 *.log
-
-# Caches and bulk image outputs of the SUIM and dendrogram runs
-# (CSV/summary files are kept; figures used in the docs live in docs/figures/)
-results/dendrogram/_cache/
-results/dendrogram/**/*.png
-results/kmeans/suim*/**/masks_*
-results/kmeans/suim*/**/panels
+*.pptx
+*.pdf
+*.mp4
+*.npy
+*.pkl
+*.pt
+*.pth
+*.h5
+.venv/
